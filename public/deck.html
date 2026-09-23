@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>StreamDeck</title>
+    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/public/css/base.css" />
+    <link rel="stylesheet" href="/public/css/deck.css" />
+  </head>
+  <body>
+    <div class="deck">
+      <header class="deck-bar">
+        <div class="deck-where">
+          <span id="deckProfile">—</span>
+          <b id="deckPage">—</b>
+        </div>
+        <div class="deck-dots" id="deckDots"></div>
+        <div class="deck-tools">
+          <span class="conn" id="conn" title="Connexion au serveur"></span>
+          <button class="deck-btn" id="fsBtn" title="Plein écran">
+            <svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+          </button>
+        </div>
+      </header>
+      <main class="deck-stage" id="stage">
+        <div class="deck-grid" id="deckGrid"></div>
+      </main>
+    </div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <script type="module" src="/public/js/deck.js"></script>
+  </body>
+</html>

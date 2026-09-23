@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StreamDeck — Gestion des touches</title>
+    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/public/css/base.css" />
+    <link rel="stylesheet" href="/public/css/app.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <img src="/public/favicon.svg" alt="" width="30" height="30" />
+          <div>
+            <strong>StreamDeck</strong>
+            <span>Gestion des touches</span>
+          </div>
+        </div>
+
+        <div class="profile-switch">
+          <button class="profile-btn" id="profileBtn" aria-haspopup="menu">
+            <span class="profile-label">Profil</span>
+            <span class="profile-name" id="profileName">—</span>
+            <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+        </div>
+
+        <div class="topbar-right">
+          <span class="save-state" id="saveState" data-state="idle"></span>
+          <span class="status-pill" id="statusPill" data-state="pending">
+            <i></i><span>Connexion…</span>
+          </span>
+          <button class="btn ghost icon-only" id="undoBtn" title="Annuler (Ctrl+Z)" disabled>
+            <svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
+          </button>
+          <button class="btn ghost icon-only" id="redoBtn" title="Rétablir (Ctrl+Y)" disabled>
+            <svg class="i" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></svg>
+          </button>
+          <a class="btn primary" href="/deck" target="_blank" rel="noopener">
+            <svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+            Ouvrir le Deck
+          </a>
+        </div>
+      </header>
+
+      <aside class="library panel">
+        <div class="panel-head">
+          <h2>Actions</h2>
+          <p>Glissez une action sur une touche</p>
+        </div>
+        <label class="search">
+          <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <input id="librarySearch" type="search" placeholder="Rechercher une action" autocomplete="off" />
+        </label>
+        <div class="library-list" id="libraryList"></div>
+      </aside>
+
+      <main class="stage">
+        <div class="stage-toolbar">
+          <nav class="page-tabs" id="pageTabs" aria-label="Pages"></nav>
+          <div class="stage-tools">
+            <label class="select-inline" title="Disposition du Deck">
+              <svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 4v16M15 4v16" /></svg>
+              <select id="layoutSelect"></select>
+            </label>
+          </div>
+        </div>
+
+        <div class="device-wrap">
+          <div class="device" id="device">
+            <div class="device-grid" id="grid"></div>
+          </div>
+        </div>
+
+        <p class="stage-hint">
+          <kbd>Glisser</kbd> une touche sur une autre pour les échanger ·
+          <kbd>Ctrl</kbd> <kbd>C</kbd> / <kbd>V</kbd> copier-coller ·
+          <kbd>Suppr</kbd> effacer
+        </p>
+      </main>
+
+      <aside class="inspector panel" id="inspector"></aside>
+    </div>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <input type="file" id="importInput" accept="application/json,.json" hidden />
+
+    <script type="module" src="/public/js/app.js"></script>
+  </body>
+</html>
