@@ -25,6 +25,9 @@ le PC : raccourci clavier, texte, commande multimédia, lancement d'application�
 Les installateurs sont produits automatiquement par GitHub Actions à chaque
 modification (onglet **Actions** du dépôt → dernière exécution de « Build » →
 section *Artifacts*), et publiés dans **Releases** pour chaque version étiquetée `v*`.
+Pour publier une version : onglet **Actions** → « Build » → *Run workflow*, en
+indiquant le numéro de version (ex. `v0.2.2`) ; l'étiquette et la page de
+publication sont créées automatiquement.
 
 | Fichier | Pour |
 | --- | --- |
