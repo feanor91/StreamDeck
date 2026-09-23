@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Version à publier dans Releases (ex. v0.2.1). Laisser vide pour une simple compilation.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -110,7 +115,7 @@ jobs:
 
   release:
     name: Publication
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
     needs: [test, windows-agent, android, desktop]
     runs-on: ubuntu-latest
     permissions:
@@ -122,5 +127,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          # Sur un lancement manuel, l'étiquette est créée sur le commit compilé.
+          tag_name: ${{ inputs.release || github.ref_name }}
+          name: StreamDeck ${{ inputs.release || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: artifacts/*
           generate_release_notes: true
