@@ -30,7 +30,7 @@ section *Artifacts*), et publiés dans **Releases** pour chaque version étiquet
 | --- | --- |
 | `StreamDeck-Setup-x.y.z.exe` | Windows : installateur de l'application PC |
 | `StreamDeck-x.y.z.AppImage` | Linux : application PC |
-| `StreamDeck-Android-x.y.z.apk` | Android 8.0 ou plus récent |
+| `StreamDeck-Android-x.y.z.apk` | Android 7.0 ou plus récent |
 
 ### Sur le PC
 
@@ -51,6 +51,10 @@ section *Artifacts*), et publiés dans **Releases** pour chaque version étiquet
    droite du Deck (ou la touche Retour) permet de changer de PC.
 
 L'écran reste allumé et s'affiche en plein écran ; les touches vibrent légèrement.
+
+Sur **Android 7 à 9**, l'affichage du Deck repose sur **Google Chrome** (et sur
+**Android System WebView** à partir d'Android 10) : mettez-le à jour depuis le Play
+Store. L'application prévient au démarrage si la version est trop ancienne.
 
 ## Interface de configuration
 

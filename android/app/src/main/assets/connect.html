@@ -415,7 +415,7 @@
     <script>
       // Hors de l'application (aperçu dans un navigateur), on simule le pont Android.
       const app =
-        window.DeckApp ??
+        window.DeckApp ||
         {
           getState: () => JSON.stringify({ recents: [{ name: 'BUREAU', host: '192.168.1.20', port: 3210 }], error: null, version: 'aperçu' }),
           discover: () => setTimeout(() => window.onDiscovered([{ name: 'MON-PC', host: '192.168.1.42', port: 3210 }]), 1200),
@@ -497,7 +497,7 @@
       $('rescan').addEventListener('click', scan);
       $('cancel').addEventListener('click', () => {
         cancelled = true;
-        app.cancel?.();
+        if (app.cancel) app.cancel();
         $('connecting').classList.remove('show');
       });
       $('manual').addEventListener('submit', (e) => {

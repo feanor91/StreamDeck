@@ -2,6 +2,7 @@ package com.streamdeck.client
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -17,6 +18,7 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONArray
@@ -62,6 +64,7 @@ class MainActivity : Activity() {
         }
         setContentView(web)
         enterImmersive()
+        checkWebView()
 
         // Reconnexion automatique au dernier PC utilisé (l'écran de connexion affiche la progression).
         if (prefs.getBoolean("auto_connect", true)) autoConnect = lastServer()
@@ -88,6 +91,34 @@ class MainActivity : Activity() {
         io.shutdownNow()
         web.destroy()
         super.onDestroy()
+    }
+
+    // --- Compatibilité (Android 7 et plus) ---------------------------------------------------
+
+    /**
+     * Le Deck s'affiche via le composant WebView du système. Sur Android 7 à 9, il est fourni
+     * par Google Chrome ; s'il n'a pas été mis à jour, l'affichage peut être incomplet.
+     */
+    private fun checkWebView() {
+        val ua = runCatching { WebSettings.getDefaultUserAgent(this) }.getOrDefault("")
+        val major = Regex("Chrome/(\\d+)").find(ua)?.groupValues?.get(1)?.toIntOrNull() ?: return
+        if (major >= MIN_WEBVIEW) return
+        val pkg = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) "com.android.chrome" else "com.google.android.webview"
+        val appName = if (pkg == "com.android.chrome") "Google Chrome" else "Android System WebView"
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Mise à jour nécessaire")
+            .setMessage(
+                "Le moteur d'affichage de cet appareil est trop ancien (version $major, $MIN_WEBVIEW minimum). " +
+                    "Mettez à jour « $appName » depuis le Play Store, puis relancez StreamDeck."
+            )
+            .setPositiveButton("Ouvrir le Play Store") { _, _ ->
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))) }
+                    .onFailure {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")))
+                    }
+            }
+            .setNegativeButton("Continuer", null)
+            .show()
     }
 
     // --- Plein écran ------------------------------------------------------------------------
@@ -261,6 +292,9 @@ class MainActivity : Activity() {
         }
     }
 }
+
+/** Version minimale du moteur Chromium de la WebView (requêtes de conteneur et color-mix CSS). */
+private const val MIN_WEBVIEW = 111
 
 private object BuildConfigCompat {
     fun versionName(activity: Activity): String = runCatching {
