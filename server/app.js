@@ -6,7 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, findKey, LAYOUTS } from './store.js';
 import { createExecutor } from './executors/index.js';
-import { runAction } from './actions.js';
+import { runAction, toggleAction } from './actions.js';
+import { ToggleStates } from './states.js';
+import { stateKey } from '../shared/layout.js';
 import { startDiscovery } from './discovery.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -123,6 +125,7 @@ export async function startDeckServer({
   log = console,
 } = {}) {
   const store = new Store(dataDir);
+  const toggles = new ToggleStates(dataDir);
   const executor = createExecutor({ dryRun, log: (m) => log.log(m) });
   let executorStatus = { ok: false, reason: 'Vérification en cours…' };
   const clients = new Set();
@@ -147,7 +150,7 @@ export async function startDeckServer({
     checkRequestOrigin(req);
     switch (`${req.method} ${pathname}`) {
       case 'GET /api/config':
-        return send(res, 200, { revision, config: store.config });
+        return send(res, 200, { revision, config: store.config, states: toggles.all() });
 
       case 'PUT /api/config': {
         requireAdmin(req);
@@ -179,14 +182,31 @@ export async function startDeckServer({
         });
 
       case 'POST /api/press': {
-        const { profileId, pageId, index } = await readJson(req);
+        const { profileId, pageId, index, syncOnly } = await readJson(req);
         const key = findKey(store.config, profileId, pageId, index);
         if (!key) throw httpError('Touche vide.', 404);
         const started = Date.now();
+        const isToggle = key.action?.type === 'toggle';
+        const sk = stateKey(profileId, pageId, index);
+        // Appui long sur une bascule : on change l'état sans rien envoyer (resynchronisation).
+        if (syncOnly) {
+          if (!isToggle) throw httpError('Seules les touches à bascule peuvent être resynchronisées.', 400);
+          const state = toggles.set(sk, !toggles.get(sk));
+          broadcast('state', { key: sk, state });
+          return send(res, 200, { ok: true, state });
+        }
         try {
-          await runAction(executor, key.action);
+          if (isToggle) {
+            const inner = toggleAction(key.action, toggles.get(sk));
+            if (!inner?.type) throw new Error('Aucune action définie pour cet état de la bascule.');
+            await runAction(executor, inner);
+            const state = toggles.set(sk, !toggles.get(sk));
+            broadcast('state', { key: sk, state });
+          } else {
+            await runAction(executor, key.action);
+          }
           broadcast('press', { profileId, pageId, index, ok: true });
-          return send(res, 200, { ok: true, ms: Date.now() - started });
+          return send(res, 200, { ok: true, ms: Date.now() - started, state: isToggle ? toggles.get(sk) : undefined });
         } catch (e) {
           broadcast('press', { profileId, pageId, index, ok: false, error: e.message });
           throw Object.assign(e, { status: 422 });
@@ -245,6 +265,7 @@ export async function startDeckServer({
   });
 
   await store.load();
+  await toggles.load();
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {
@@ -269,6 +290,7 @@ export async function startDeckServer({
     deckUrls,
     async close() {
       disco?.close();
+      await toggles.flush().catch(() => {});
       for (const res of clients) res.end();
       clients.clear();
       executor.dispose?.();

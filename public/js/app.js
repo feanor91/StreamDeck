@@ -5,6 +5,7 @@ import {
   ACTION_TYPES, STEP_TYPES, DELAY_TYPE, LIBRARY, COLORS, EMOJIS,
   libraryItemInfo, createFromLibrary, keyFace, isMac,
 } from './catalog.js';
+import { computeCells, placementError, findFreeSlot, keySpan, stateKey } from '/shared/layout.js';
 
 const $ = (id) => document.getElementById(id);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -22,6 +23,8 @@ const state = {
   clipboard: null,
   windows: [],
   iconTab: 'emoji',
+  faceTab: 0, // apparence éditée d'une bascule : 0 = état 1, 1 = état 2
+  toggles: {}, // états courants des bascules (clé : profil/page/index)
   connected: false,
 };
 
@@ -33,6 +36,8 @@ const page = () => profile().pages.find((p) => p.id === state.pageId) ?? profile
 const keyAt = (i) => page().keys[i] ?? null;
 const layout = () => (state.status?.layouts ?? FALLBACK_LAYOUTS)[state.config.layout] ?? { rows: 3, cols: 5 };
 const slotCount = () => layout().rows * layout().cols;
+const toggleState = (i) => (state.toggles[stateKey(profile().id, page().id, i)] ? 1 : 0);
+const spanOf = (key) => ({ w: Math.max(1, Number(key?.span?.w) || 1), h: Math.max(1, Number(key?.span?.h) || 1) });
 
 function ensureSelection() {
   if (!state.config.profiles.some((p) => p.id === state.profileId)) state.profileId = state.config.activeProfileId;
@@ -202,18 +207,19 @@ function renderGrid() {
   device.style.setProperty('--cols', cols);
   device.style.setProperty('--rows', rows);
   const grid = $('grid');
-  const slots = [];
-  for (let i = 0; i < rows * cols; i++) slots.push(buildSlot(i));
-  grid.replaceChildren(...slots);
+  const { cells } = computeCells(page().keys, rows, cols);
+  grid.replaceChildren(...cells.map(buildSlot));
 }
 
-function buildSlot(i) {
+function buildSlot(cell) {
+  const i = cell.index;
   const key = keyAt(i);
   const slot = h(
     'button',
     {
       class: `slot${state.selected === i ? ' selected' : ''}`,
       dataset: { index: i },
+      style: { gridColumn: `${cell.col + 1} / span ${cell.w}`, gridRow: `${cell.row + 1} / span ${cell.h}` },
       draggable: key ? 'true' : 'false',
       'aria-label': key ? `Touche ${i + 1} : ${key.title || ACTION_TYPES[key.action?.type]?.long || ''}` : `Touche ${i + 1} vide`,
       onclick: () => select(i),
@@ -223,7 +229,7 @@ function buildSlot(i) {
         keyMenu({ x: e.clientX, y: e.clientY }, i);
       },
     },
-    keyFace(key),
+    keyFace(key, toggleState(i)),
   );
   if (!key) slot.append(h('span', { class: 'plus' }, icon('plus')));
   else if (key.action?.type === 'page') slot.append(h('span', { class: 'badge' }, icon('folder')));
@@ -415,10 +421,17 @@ function buildEmptyInspector() {
 function buildHero(i) {
   const key = keyAt(i);
   const t = ACTION_TYPES[key?.action?.type];
+  // Aperçu : état en cours d'édition pour une bascule, forme réelle pour une touche fusionnée.
+  const face = keyFace(key, key?.action?.type === 'toggle' ? state.faceTab : 0);
+  const { w, h: hh } = spanOf(key);
+  if (key && (w > 1 || hh > 1)) {
+    face.style.aspectRatio = `${w} / ${hh}`;
+    face.style.width = w >= hh ? '120px' : '70px';
+  }
   return h(
     'div',
     { class: 'insp-hero' },
-    keyFace(key),
+    face,
     h(
       'div',
       { class: 'insp-hero-info' },
@@ -564,6 +577,8 @@ function actionFields(getAction, tag) {
     }
     case 'multi':
       return [multiEditor(getAction, tag)];
+    case 'toggle':
+      return [toggleEditor(getAction, tag)];
     case 'delay':
       return [textField(getAction, 'ms', 'Durée (millisecondes)', { tag, type: 'number', placeholder: '300' })];
     default:
@@ -858,9 +873,149 @@ function compactTarget(getAction, tag) {
   );
 }
 
+// Taille d'une touche fusionnée (en nombre d'emplacements).
+function sizeField(i) {
+  const { rows, cols } = layout();
+  const { w, h: hh } = spanOf(keyAt(i));
+  const apply = (nw, nh) => {
+    const err = placementError(page().keys, i, nw, nh, rows, cols, [i]);
+    if (err) {
+      toast(`Fusion impossible : ${err}`, 'err', 4500);
+      renderInspector();
+      return;
+    }
+    commit(() => {
+      const k = keyAt(i);
+      if (nw === 1 && nh === 1) delete k.span;
+      else k.span = { w: nw, h: nh };
+    });
+  };
+  const opts = (max, cur) => Array.from({ length: max }, (_, n) => h('option', { value: n + 1, selected: n + 1 === cur }, String(n + 1)));
+  const presets = [[1, 1], [2, 1], [1, 2], [2, 2], [4, 2], [4, 4]].filter(([a, b]) => a <= cols && b <= rows);
+  return h(
+    'div',
+    { class: 'field' },
+    h('span', {}, 'Taille (touches fusionnées)'),
+    h(
+      'div',
+      { class: 'size-presets' },
+      ...presets.map(([a, b]) =>
+        h(
+          'button',
+          { class: a === w && b === hh ? 'on' : '', title: `${a} × ${b}`, onclick: () => apply(a, b) },
+          h('span', { class: 'mini', style: { gridTemplateColumns: `repeat(${a}, 1fr)` } }, ...Array.from({ length: a * b }, () => h('i'))),
+          `${a}×${b}`,
+        ),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'row' },
+      h('label', { class: 'field' }, h('span', {}, 'Largeur'), h('select', { onchange: (e) => apply(Number(e.target.value), hh) }, ...opts(cols, w))),
+      h('label', { class: 'field' }, h('span', {}, 'Hauteur'), h('select', { onchange: (e) => apply(w, Number(e.target.value)) }, ...opts(rows, hh))),
+    ),
+    h('span', { class: 'hint' }, 'La touche s’étend vers la droite et vers le bas ; les emplacements couverts doivent être vides.'),
+  );
+}
+
+const INNER_TYPES = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi'];
+
+// Éditeur d'une touche à bascule : une action par état (ou la même pour les deux).
+function toggleEditor(getAction, tag) {
+  const a = getAction();
+  const i = state.selected;
+  const actions = () => {
+    const act = getAction();
+    if (!Array.isArray(act.actions)) act.actions = [];
+    return act.actions;
+  };
+  const current = toggleState(i);
+  const names = [keyAt(i)?.title || 'État 1', keyAt(i)?.alt?.title || 'État 2'];
+
+  const stateCard = (n) => {
+    const getInner = () => actions()[n] ?? (actions()[n] = ACTION_TYPES.hotkey.create());
+    const inner = getInner();
+    return h(
+      'div',
+      { class: 'step' },
+      h(
+        'div',
+        { class: 'step-head' },
+        h('span', { class: `num${current === n ? ' live' : ''}`, title: current === n ? 'État actuel' : '' }, n + 1),
+        h(
+          'select',
+          {
+            onchange: (e) =>
+              commit(() => {
+                actions()[n] = ACTION_TYPES[e.target.value].create();
+              }),
+          },
+          ...INNER_TYPES.map((t) => h('option', { value: t, selected: t === inner.type }, `${ACTION_TYPES[t].icon}  ${ACTION_TYPES[t].long}`)),
+        ),
+      ),
+      h(
+        'div',
+        { class: 'step-body' },
+        h('span', { class: 'field-label' }, a.same ? 'À chaque appui, envoyer :' : `Appui sur « ${names[n]} » : envoyer`),
+        ...actionFields(getInner, `${tag}:t${n}`),
+        ['hotkey', 'text'].includes(inner.type) ? compactTarget(getInner, `${tag}:t${n}`) : null,
+      ),
+    );
+  };
+
+  return h(
+    'div',
+    { class: 'field' },
+    h('div', { class: 'note info' }, icon('info'),
+      h('span', {}, 'À chaque appui, la touche envoie l’action de son état actuel puis passe à l’autre état (titre, icône et couleur changent). Sur le Deck, un appui long change l’état sans rien envoyer, pour se recaler sur le simulateur.')),
+    h(
+      'label',
+      { class: 'switch' },
+      h('input', {
+        type: 'checkbox',
+        checked: !!a.same,
+        onchange: (e) => commit(() => (getAction().same = e.target.checked)),
+      }),
+      'Même action pour les deux états (ex. touche G pour le train)',
+    ),
+    h('div', { class: 'steps' }, stateCard(0), a.same ? null : stateCard(1)),
+    h(
+      'div',
+      { class: 'row', style: { alignItems: 'center' } },
+      h('span', { class: 'hint', style: { flex: 1 } }, `État actuel : ${current + 1} (« ${names[current]} »)`),
+      h(
+        'button',
+        {
+          class: 'btn small',
+          style: { flex: 'none' },
+          title: 'Change l’état affiché sans envoyer de touche',
+          onclick: async () => {
+            try {
+              await api.sync(profile().id, page().id, i);
+            } catch (e) {
+              toast(e.message, 'err');
+            }
+          },
+        },
+        icon('refresh'),
+        'Changer d’état',
+      ),
+    ),
+  );
+}
+
 function appearanceSection(i) {
-  const key = keyAt(i);
-  const setFace = (patch, opts = { render: 'key' }) => commit(() => Object.assign(keyAt(i), patch), opts);
+  const raw = keyAt(i);
+  const isToggle = raw.action?.type === 'toggle';
+  // Bascule : l'état 2 a sa propre apparence (key.alt), qui se superpose à celle de l'état 1.
+  const alt = isToggle && state.faceTab === 1;
+  const key = alt ? { ...raw, ...(raw.alt ?? {}) } : raw;
+  const setFace = (patch, opts = { render: 'key' }) =>
+    commit(() => {
+      const k = keyAt(i);
+      if (alt) k.alt = { ...(k.alt ?? {}), ...patch };
+      else Object.assign(k, patch);
+    }, opts);
   const isImage = key.icon?.startsWith('data:');
   if (isImage) state.iconTab = 'image';
 
@@ -933,7 +1088,7 @@ function appearanceSection(i) {
   };
 
   const colorIsCustom = !COLORS.includes(key.color);
-  return section(
+  const sec = section(
     'Apparence',
     h('label', { class: 'field' }, h('span', {}, 'Titre'), titleInput),
     h(
@@ -985,6 +1140,20 @@ function appearanceSection(i) {
       ),
     ),
   );
+  if (isToggle) {
+    sec.querySelector('.section-head').after(
+      h(
+        'div',
+        { class: 'segmented' },
+        ...[0, 1].map((n) =>
+          h('button', { class: state.faceTab === n ? 'on' : '', onclick: () => { state.faceTab = n; renderInspector(); } },
+            `État ${n + 1}${n === 0 ? '' : ' (après un appui)'}`),
+        ),
+      ),
+    );
+  }
+  if (!alt) sec.append(sizeField(i));
+  return sec;
 }
 
 // Redimensionne une image en 144×144 (recadrage centré) pour garder une configuration légère.
@@ -1017,14 +1186,22 @@ function resizeImage(file, size = 144) {
 function select(i) {
   if (state.selected === i) return;
   state.selected = i;
+  state.faceTab = 0;
   state.iconTab = keyAt(i)?.icon?.startsWith('data:') ? 'image' : 'emoji';
   renderGrid();
   renderInspector();
 }
 
-function firstFreeSlot() {
-  for (let i = 0; i < slotCount(); i++) if (!keyAt(i)) return i;
-  return null;
+function firstFreeSlot(w = 1, h = 1) {
+  const { rows, cols } = layout();
+  return findFreeSlot(page().keys, rows, cols, w, h);
+}
+
+/** Message d'erreur si la touche `j` (éventuellement fusionnée) ne tient pas à sa place, sinon null. */
+function fitError(keys, j) {
+  const { rows, cols } = layout();
+  const { w, h } = spanOf(keys[j]);
+  return placementError(keys, j, w, h, rows, cols, [j]);
 }
 
 function assignLibrary(item, i) {
@@ -1047,22 +1224,25 @@ function changeType(i, type) {
     // Si l'apparence est encore celle par défaut de l'ancien type, on la met à jour aussi.
     if (!prev || key.icon === prev.face.icon) key.icon = t.face.icon;
     if (!prev || key.color === prev.face.color) key.color = t.face.color;
-    if (!prev || key.title === prev.label) key.title = t.label;
+    if (!prev || key.title === (prev.face.title ?? prev.label)) key.title = t.face.title ?? t.label;
+    if (t.alt && !key.alt) key.alt = { ...t.alt };
     key.action = t.create();
   });
 }
 
 function swapKeys(a, b) {
   if (a === b) return;
-  commit(() => {
-    const keys = page().keys;
-    const ka = keys[a];
-    const kb = keys[b];
-    delete keys[a];
-    delete keys[b];
-    if (kb) keys[a] = kb;
-    if (ka) keys[b] = ka;
-  });
+  // Simulation sur une copie : une touche fusionnée doit tenir à sa nouvelle place.
+  const keys = clone(page().keys);
+  const ka = keys[a];
+  const kb = keys[b];
+  delete keys[a];
+  delete keys[b];
+  if (kb) keys[a] = kb;
+  if (ka) keys[b] = ka;
+  const err = (ka && fitError(keys, b)) || (kb && fitError(keys, a));
+  if (err) return toast(`Déplacement impossible : ${err}`, 'err', 4500);
+  commit(() => (page().keys = keys));
   state.selected = b;
   renderGrid();
   renderInspector();
@@ -1070,14 +1250,10 @@ function swapKeys(a, b) {
 
 function moveKeyToPage(i, pageId) {
   const dest = profile().pages.find((p) => p.id === pageId);
-  let free = null;
-  for (let j = 0; j < slotCount(); j++) {
-    if (!dest.keys[j]) {
-      free = j;
-      break;
-    }
-  }
-  if (free === null) return toast(`La page « ${dest.name} » est pleine.`, 'err');
+  const { rows, cols } = layout();
+  const { w, h } = spanOf(keyAt(i));
+  const free = findFreeSlot(dest.keys, rows, cols, w, h);
+  if (free === null) return toast(`Pas assez de place libre sur la page « ${dest.name} ».`, 'err');
   commit(() => {
     const d = profile().pages.find((p) => p.id === pageId);
     d.keys[free] = page().keys[i];
@@ -1102,12 +1278,17 @@ function copyKey(i) {
 
 function pasteKey(i) {
   if (!state.clipboard) return;
+  const keys = clone(page().keys);
+  keys[i] = clone(state.clipboard);
+  const err = fitError(keys, i);
+  if (err) return toast(`Collage impossible : ${err}`, 'err', 4500);
   commit(() => (page().keys[i] = clone(state.clipboard)));
 }
 
 function duplicateKey(i) {
-  const free = firstFreeSlot();
-  if (free === null) return toast('Aucune touche libre sur cette page.', 'err');
+  const { w, h } = spanOf(keyAt(i));
+  const free = firstFreeSlot(w, h);
+  if (free === null) return toast('Pas assez de place libre sur cette page.', 'err');
   commit(() => (page().keys[free] = clone(keyAt(i))));
   state.selected = free;
   renderGrid();
@@ -1119,14 +1300,17 @@ async function testKey(i) {
   const action = key?.action;
   if (!action) return;
   if (action.type === 'page') return toast('La navigation entre pages s’effectue sur le Deck.', 'info');
+  // Bascule : on teste l'action de l'état affiché, sans changer l'état.
+  const tested = action.type === 'toggle' ? { ...action, testState: toggleState(i) } : action;
+  const inner = action.type === 'toggle' ? (toggleState(i) && !action.same ? action.actions?.[1] : action.actions?.[0]) ?? {} : action;
   const needsFocus = (a) => ['hotkey', 'text'].includes(a.type) && (!a.target || a.target.by === 'none' || !a.target.value);
-  const risky = needsFocus(action) || (action.type === 'multi' && action.steps?.some(needsFocus));
+  const risky = needsFocus(inner) || (inner.type === 'multi' && inner.steps?.some(needsFocus));
   if (risky) {
     toast('Envoi dans 3 s : placez-vous dans le logiciel qui doit recevoir les touches…', 'info', 3000);
     await new Promise((r) => setTimeout(r, 3000));
   }
   try {
-    await api.test(action);
+    await api.test(tested);
     flashSlot(i, true);
     toast('Action exécutée', 'ok');
   } catch (e) {
@@ -1357,10 +1541,16 @@ function onKeydown(e) {
   }
   if (i === null) return;
   const { cols } = layout();
-  const moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols };
+  // Une touche fusionnée se quitte par son bord : on avance de sa largeur / hauteur.
+  const { w, h } = keySpan(keyAt(i));
+  const moves = { ArrowLeft: -1, ArrowRight: w, ArrowUp: -cols, ArrowDown: h * cols };
   if (moves[e.key] !== undefined) {
-    const next = i + moves[e.key];
-    if (next >= 0 && next < slotCount()) {
+    let next = i + moves[e.key];
+    const sameRow = Math.floor(next / cols) === Math.floor(i / cols);
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !sameRow) next = -1;
+    // Emplacement recouvert par une touche fusionnée : on sélectionne cette touche.
+    if (next >= 0 && next < slotCount()) next = computeCells(page().keys, layout().rows, cols).coveredBy.get(next) ?? next;
+    if (next >= 0 && next < slotCount() && next !== i) {
       e.preventDefault();
       select(next);
       document.querySelector(`.slot[data-index="${next}"]`)?.focus();
@@ -1424,9 +1614,10 @@ function connectEvents() {
     hello: async ({ revision }) => {
       // Reconnexion : on récupère les modifications faites entre-temps.
       if (revision !== state.revision && !dirty) {
-        const { config, revision: r } = await api.getConfig();
+        const { config, revision: r, states } = await api.getConfig();
         state.config = config;
         state.revision = r;
+        state.toggles = states ?? {};
         ensureSelection();
         renderAll();
       }
@@ -1442,6 +1633,11 @@ function connectEvents() {
     press: ({ profileId, pageId, index, ok }) => {
       if (profileId === profile().id && pageId === page().id) flashSlot(index, ok);
     },
+    state: ({ key, state: value }) => {
+      if (value) state.toggles[key] = 1;
+      else delete state.toggles[key];
+      refreshKeyViews();
+    },
     status: ({ executorStatus }) => {
       if (state.status) state.status.executorStatus = executorStatus;
       renderStatus();
@@ -1454,9 +1650,10 @@ async function init() {
   bindGlobal();
   renderLibrary();
   try {
-    const [{ config, revision }, status] = await Promise.all([api.getConfig(), api.status()]);
+    const [{ config, revision, states }, status] = await Promise.all([api.getConfig(), api.status()]);
     state.config = config;
     state.revision = revision;
+    state.toggles = states ?? {};
     state.status = status;
     state.connected = true;
   } catch (e) {

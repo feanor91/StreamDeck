@@ -1,5 +1,6 @@
 import { formatHotkey, MEDIA_ACTIONS } from '/shared/keys.js';
 import { h } from './dom.js';
+import { faceFor } from '/shared/layout.js';
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -79,6 +80,28 @@ export const ACTION_TYPES = {
       return ctx?.pages?.find((p) => p.id === a.pageId)?.name ?? 'Aucune page choisie';
     },
   },
+  toggle: {
+    label: 'Bascule',
+    long: 'Bascule (2 états)',
+    desc: 'Alterne entre deux états à chaque appui',
+    icon: '🔀',
+    color: '#f97316',
+    create: () => ({
+      type: 'toggle',
+      same: true,
+      actions: [
+        { type: 'hotkey', hotkey: { modifiers: [], key: '' }, target: { by: 'none', value: '' } },
+        { type: 'hotkey', hotkey: { modifiers: [], key: '' }, target: { by: 'none', value: '' } },
+      ],
+    }),
+    face: { icon: '⚪', color: '#334155', title: 'Inactif' },
+    alt: { icon: '🟢', color: '#15803d', title: 'Actif' },
+    summary: (a, ctx) => {
+      const [a0, a1] = a.actions ?? [];
+      const sum = (x) => (x?.type && x.type !== 'toggle' ? ACTION_TYPES[x.type]?.summary(x, ctx) : '—');
+      return a.same ? `2 états · ${sum(a0)}` : `${sum(a0)} ⇄ ${sum(a1)}`;
+    },
+  },
   multi: {
     label: 'Multi',
     long: 'Multi-actions',
@@ -128,7 +151,57 @@ export const LIBRARY = [
   },
   {
     group: 'Avancé',
-    items: [{ type: 'multi' }],
+    items: [{ type: 'multi' }, { type: 'toggle' }],
+  },
+  {
+    group: 'Simulation',
+    items: [
+      {
+        type: 'toggle',
+        label: 'Train d’atterrissage',
+        preset: {
+          same: true,
+          actions: [
+            { type: 'hotkey', hotkey: { modifiers: [], key: 'G' }, target: { by: 'none', value: '' } },
+            { type: 'hotkey', hotkey: { modifiers: [], key: 'G' }, target: { by: 'none', value: '' } },
+          ],
+        },
+        icon: '✈️',
+        title: 'Train rentré',
+        color: '#334155',
+        alt: { title: 'Train sorti', icon: '🛬', color: '#15803d' },
+      },
+      {
+        type: 'toggle',
+        label: 'Feux d’atterrissage',
+        preset: {
+          same: true,
+          actions: [
+            { type: 'hotkey', hotkey: { modifiers: ['ctrl'], key: 'L' }, target: { by: 'none', value: '' } },
+            { type: 'hotkey', hotkey: { modifiers: ['ctrl'], key: 'L' }, target: { by: 'none', value: '' } },
+          ],
+        },
+        icon: '💡',
+        title: 'Feux éteints',
+        color: '#334155',
+        alt: { title: 'Feux allumés', icon: '💡', color: '#ca8a04' },
+      },
+      {
+        type: 'toggle',
+        label: 'Frein de parc',
+        preset: {
+          same: true,
+          actions: [
+            { type: 'hotkey', hotkey: { modifiers: ['ctrl'], key: 'Period' }, target: { by: 'none', value: '' } },
+            { type: 'hotkey', hotkey: { modifiers: ['ctrl'], key: 'Period' }, target: { by: 'none', value: '' } },
+          ],
+        },
+        icon: '🅿️',
+        title: 'Frein desserré',
+        color: '#334155',
+        alt: { title: 'Frein serré', icon: '🅿️', color: '#b91c1c' },
+      },
+    ],
   },
 ];
 
@@ -144,9 +217,11 @@ export function libraryItemInfo(item) {
 
 export function createFromLibrary(item) {
   const t = ACTION_TYPES[item.type];
+  const face = { title: item.title ?? t.face.title ?? t.label, icon: item.icon ?? t.face.icon, color: item.color ?? t.face.color };
+  const alt = item.alt ?? t.alt;
   return {
     action: { ...t.create(), ...(item.preset ?? {}) },
-    face: { title: item.title ?? t.label, icon: item.icon ?? t.face.icon, color: t.face.color },
+    face: alt ? { ...face, alt: { ...alt } } : face,
   };
 }
 
@@ -162,8 +237,10 @@ export const EMOJIS = (
 ).split(' ');
 
 // Construit le rendu visuel d'une touche (utilisé par la gestion et le Deck).
-export function keyFace(key) {
-  if (!key) return h('div', { class: 'keyface empty' });
+// `state` : état courant d'une touche à bascule (0 ou 1).
+export function keyFace(rawKey, state = 0) {
+  if (!rawKey) return h('div', { class: 'keyface empty' });
+  const key = faceFor(rawKey, state);
   const showTitle = key.showTitle !== false && key.title;
   const hasIcon = !!key.icon;
   const el = h('div', {
@@ -175,5 +252,8 @@ export function keyFace(key) {
     else el.append(h('span', { class: 'kf-icon' }, key.icon));
   }
   if (showTitle) el.append(h('span', { class: 'kf-title' }, key.title));
+  if (rawKey.action?.type === 'toggle') {
+    el.append(h('span', { class: 'kf-state', title: `État ${state ? 2 : 1}` }, h('i', { class: state ? '' : 'on' }), h('i', { class: state ? 'on' : '' })));
+  }
   return el;
 }

@@ -377,6 +377,7 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .device-grid {
+  --key-radius: calc(var(--cell) * 0.16);
   display: grid;
   grid-template-columns: repeat(var(--cols), var(--cell));
   grid-auto-rows: var(--cell);
@@ -388,7 +389,7 @@ body {
   border: 0;
   padding: 0;
   background: none;
-  border-radius: 16%;
+  border-radius: var(--key-radius, 16%);
   cursor: pointer;
   outline: none;
   transition: transform 0.15s var(--ease);
@@ -970,4 +971,56 @@ body {
   .stage-hint {
     display: none;
   }
+}
+
+/* ---------- Touches fusionnées : préréglages de taille ---------- */
+.size-presets {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.size-presets button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 2px 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.size-presets button:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.size-presets button.on {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.size-presets .mini {
+  display: grid;
+  gap: 2px;
+  width: 22px;
+}
+.size-presets .mini i {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.55;
+}
+.size-presets button.on .mini i {
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* État actuel d'une bascule */
+.step-head .num.live {
+  background: var(--accent);
+  color: #fff;
 }

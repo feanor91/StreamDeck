@@ -91,6 +91,30 @@ Raccourcis clavier : flèches pour se déplacer, `Suppr` pour effacer,
 | Commande système | Exécute une commande shell |
 | Page | Change la page du Deck (page précise, suivante ou précédente) |
 | Multi-actions | Enchaîne plusieurs actions avec des pauses |
+| Bascule (2 états) | Alterne entre deux états (ex. train rentré / sorti) : titre, icône, couleur et action propres à chaque état |
+
+### Touches à bascule
+
+Une bascule a deux états, chacun avec son titre, son icône, sa couleur et
+l'action à envoyer (ou la même action pour les deux, ex. la touche `G` du train
+d'atterrissage). À chaque appui, elle envoie l'action de son état puis change
+d'état ; deux pastilles indiquent l'état courant.
+
+- L'état est gardé par le PC : le téléphone, la tablette et l'écran de
+  configuration affichent toujours le même.
+- Si le simulateur se désynchronise (touche pressée au clavier, vol rechargé…),
+  un **appui long** sur la touche du Deck change l'état **sans rien envoyer**.
+  Le bouton « Changer d'état » de l'inspecteur fait de même.
+- Préréglages prêts à l'emploi dans la bibliothèque, catégorie *Simulation* :
+  train d'atterrissage, feux d'atterrissage, frein de parc (raccourcis par
+  défaut de Microsoft Flight Simulator, modifiables).
+
+### Touches fusionnées
+
+Dans l'inspecteur, section *Apparence › Taille*, une touche peut occuper
+plusieurs emplacements : 2×1, 1×2, 2×2, 4×2, 4×4… selon la disposition choisie.
+Elle s'étend vers la droite et vers le bas ; les emplacements couverts doivent
+être libres.
 
 ### Logiciel cible
 

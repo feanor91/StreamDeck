@@ -289,7 +289,8 @@ select optgroup {
   --key-color: #1c202a;
   position: relative;
   aspect-ratio: 1;
-  border-radius: 16%;
+  /* Rayon fixe (et non en %) pour que les touches fusionnées gardent des coins réguliers */
+  border-radius: var(--key-radius, 16%);
   overflow: hidden;
   background:
     radial-gradient(120% 90% at 30% 0%, rgba(255, 255, 255, 0.16), transparent 60%),
@@ -300,18 +301,19 @@ select optgroup {
     0 4px 14px -4px rgba(0, 0, 0, 0.7);
   display: grid;
   place-items: center;
-  container-type: inline-size;
+  /* « size » : les tailles en cqmin suivent le plus petit côté (touches fusionnées rectangulaires) */
+  container-type: size;
   user-select: none;
 }
 .keyface .kf-icon {
-  font-size: 44cqw;
+  font-size: 44cqmin;
   line-height: 1;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
   transform: translateY(-6%);
 }
 .keyface.no-title .kf-icon {
   transform: none;
-  font-size: 52cqw;
+  font-size: 52cqmin;
 }
 .keyface img.kf-icon {
   width: 100%;
@@ -326,7 +328,7 @@ select optgroup {
   right: 6%;
   bottom: 7%;
   text-align: center;
-  font-size: max(9px, 12.5cqw);
+  font-size: max(9px, 12.5cqmin);
   font-weight: 650;
   line-height: 1.15;
   color: #fff;
@@ -338,8 +340,30 @@ select optgroup {
 .keyface.only-title .kf-title {
   position: static;
   white-space: normal;
-  font-size: max(10px, 16cqw);
+  font-size: max(10px, 16cqmin);
   padding: 0 8%;
+}
+.keyface img.kf-icon.contain {
+  object-fit: contain;
+}
+/* Pastille des touches à bascule : indique l'état courant (1 ou 2). */
+.keyface .kf-state {
+  position: absolute;
+  left: 7%;
+  top: 7%;
+  display: flex;
+  gap: max(2px, 3cqmin);
+}
+.keyface .kf-state i {
+  width: max(4px, 7cqmin);
+  height: max(4px, 7cqmin);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.keyface .kf-state i.on {
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
 }
 .keyface.empty {
   background: rgba(255, 255, 255, 0.025);

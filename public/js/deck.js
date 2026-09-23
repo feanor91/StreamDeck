@@ -1,10 +1,12 @@
 import { api, subscribe } from './api.js';
 import { h, toast } from './dom.js';
 import { keyFace } from './catalog.js';
+import { computeCells, stateKey } from '/shared/layout.js';
 
 const $ = (id) => document.getElementById(id);
 
-const state = { config: null, layouts: null, profileId: null, pageId: null };
+const state = { config: null, layouts: null, profileId: null, pageId: null, toggles: {} };
+const LONG_PRESS_MS = 600;
 
 // Pont fourni par l'application Android (absent dans un navigateur).
 const nativeApp = window.DeckApp ?? null;
@@ -44,9 +46,8 @@ function render(direction = 0) {
   grid.style.setProperty('--rows', rows);
 
   const pg = page();
-  const keys = [];
-  for (let i = 0; i < rows * cols; i++) keys.push(buildKey(pg, i));
-  grid.replaceChildren(...keys);
+  const { cells } = computeCells(pg.keys, rows, cols);
+  grid.replaceChildren(...cells.map((cell) => buildKey(pg, cell)));
 
   grid.classList.remove('slide-left', 'slide-right');
   if (direction) {
@@ -66,22 +67,74 @@ function render(direction = 0) {
   );
 }
 
-function buildKey(pg, i) {
-  const key = pg.keys[i] ?? null;
-  const el = h('button', { class: `dkey${key ? '' : ' empty'}`, 'aria-label': key?.title || `Touche ${i + 1}` }, keyFace(key));
+const toggleState = (pageId, i) => (state.toggles[stateKey(profile().id, pageId, i)] ? 1 : 0);
+
+function buildKey(pg, cell) {
+  const i = cell.index;
+  const key = cell.key;
+  const el = h(
+    'button',
+    {
+      class: `dkey${key ? '' : ' empty'}`,
+      'aria-label': key?.title || `Touche ${i + 1}`,
+      dataset: { index: i },
+      style: { gridColumn: `${cell.col + 1} / span ${cell.w}`, gridRow: `${cell.row + 1} / span ${cell.h}` },
+    },
+    keyFace(key, toggleState(pg.id, i)),
+  );
   if (!key) return el;
 
-  const release = () => el.classList.remove('down');
+  const isToggle = key.action?.type === 'toggle';
+  let timer = null;
+  let longDone = false;
+  const release = () => {
+    clearTimeout(timer);
+    el.classList.remove('down');
+  };
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     el.classList.add('down');
     el.setPointerCapture?.(e.pointerId);
-    press(el, pg.id, i, key);
+    longDone = false;
+    // Une bascule s'exécute au relâchement, pour laisser la place à l'appui long
+    // (resynchronisation). Les autres touches réagissent dès l'appui.
+    if (!isToggle) return press(el, pg.id, i, key);
+    timer = setTimeout(() => {
+      longDone = true;
+      resync(el, pg.id, i);
+    }, LONG_PRESS_MS);
   });
-  el.addEventListener('pointerup', release);
+  el.addEventListener('pointerup', () => {
+    const wasDown = el.classList.contains('down');
+    release();
+    if (isToggle && wasDown && !longDone) press(el, pg.id, i, key);
+  });
   el.addEventListener('pointercancel', release);
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   return el;
+}
+
+async function resync(el, pageId, index) {
+  if (nativeApp) nativeApp.haptic();
+  else navigator.vibrate?.([10, 40, 10]);
+  try {
+    await api.sync(profile().id, pageId, index);
+    feedback(el, 'ok');
+    toast('État resynchronisé (aucune touche envoyée)');
+  } catch (e) {
+    feedback(el, 'err');
+    toast(e.message, 'err', 4000);
+  }
+}
+
+// Met à jour une seule touche quand l'état d'une bascule change (sans redessiner la page).
+function refreshToggle(key) {
+  const [profileId, pageId, index] = key.split('/');
+  if (profileId !== profile().id || pageId !== page().id) return;
+  const el = document.querySelector(`.dkey[data-index="${index}"]`);
+  const k = page().keys[index];
+  if (!el || !k) return;
+  el.querySelector('.keyface')?.replaceWith(keyFace(k, toggleState(pageId, Number(index))));
 }
 
 async function press(el, pageId, index, key) {
@@ -154,8 +207,9 @@ function setConnected(on) {
 }
 
 async function load() {
-  const [{ config }, status] = await Promise.all([api.getConfig(), api.status()]);
+  const [{ config, states }, status] = await Promise.all([api.getConfig(), api.status()]);
   state.layouts = status.layouts;
+  state.toggles = states ?? {};
   applyConfig(config);
 }
 
@@ -172,6 +226,11 @@ async function init() {
     error: () => setConnected(false),
     hello: () => load().catch(() => {}),
     config: ({ config }) => applyConfig(config),
+    state: ({ key, state: value }) => {
+      if (value) state.toggles[key] = 1;
+      else delete state.toggles[key];
+      refreshToggle(key);
+    },
   });
 }
 
