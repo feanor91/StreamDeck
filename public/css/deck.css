@@ -260,3 +260,4 @@ body {
     padding: 6px 10px 14px;
   }
 }
+.deck-btn[hidden] { display: none; }

@@ -3,7 +3,10 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const AGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'windows-agent.ps1');
+// Dans l'application PC empaquetée, le script est extrait hors de l'archive asar (voir asarUnpack).
+const AGENT = path
+  .join(path.dirname(fileURLToPath(import.meta.url)), 'windows-agent.ps1')
+  .replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 // Codes de touches virtuelles Windows : [vk, touche étendue]
 const VK = {

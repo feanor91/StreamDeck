@@ -376,7 +376,8 @@ function section(title, ...children) {
 }
 
 function buildEmptyInspector() {
-  const urls = state.status?.deckUrls ?? [];
+  const port = state.status?.port ?? location.port;
+  const addrs = (state.status?.addresses ?? []).map((a) => `${a}:${port}`);
   return h(
     'div',
     { class: 'insp-empty' },
@@ -386,9 +387,9 @@ function buildEmptyInspector() {
     h(
       'div',
       { class: 'connect-card' },
-      h('h4', {}, 'Utiliser le Deck sur un autre appareil'),
-      h('p', {}, 'Ouvrez cette adresse sur une tablette ou un téléphone connecté au même réseau :'),
-      ...(urls.length ? urls : [`${location.origin}/deck`]).map((u) =>
+      h('h4', {}, 'Connecter un téléphone Android'),
+      h('p', {}, 'Ouvrez l’application StreamDeck sur le téléphone, connecté au même Wi-Fi : ce PC apparaît automatiquement. Sinon, saisissez l’adresse :'),
+      ...(addrs.length ? addrs : [location.host]).map((u) =>
         h(
           'code',
           {},
@@ -403,6 +404,7 @@ function buildEmptyInspector() {
           ),
         ),
       ),
+      h('p', { style: { marginTop: '10px' } }, 'Depuis un navigateur (tablette, autre PC) : ', h('b', {}, `http://${addrs[0] ?? location.host}/deck`)),
     ),
     state.status && !state.status.executorStatus.ok
       ? h('div', { class: 'note', style: { marginTop: '12px', textAlign: 'left' } }, icon('alert'), h('span', {}, state.status.executorStatus.reason))

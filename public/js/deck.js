@@ -6,6 +6,9 @@ const $ = (id) => document.getElementById(id);
 
 const state = { config: null, layouts: null, profileId: null, pageId: null };
 
+// Pont fourni par l'application Android (absent dans un navigateur).
+const nativeApp = window.DeckApp ?? null;
+
 const profile = () => state.config.profiles.find((p) => p.id === state.profileId) ?? state.config.profiles[0];
 const page = () => profile().pages.find((p) => p.id === state.pageId) ?? profile().pages[0];
 const layout = () => state.layouts?.[state.config.layout] ?? { rows: 3, cols: 5 };
@@ -82,7 +85,8 @@ function buildKey(pg, i) {
 }
 
 async function press(el, pageId, index, key) {
-  navigator.vibrate?.(12);
+  if (nativeApp) nativeApp.haptic();
+  else navigator.vibrate?.(12);
   if (key.action?.type === 'page') {
     if (key.action.pageId) goToPage(key.action.pageId);
     return;
@@ -118,6 +122,13 @@ async function keepAwake() {
       wakeLock?.addEventListener('release', () => (wakeLock = null));
     }
   } catch {}
+}
+
+if (nativeApp) {
+  // L'application gère déjà le plein écran ; on propose à la place de changer de PC.
+  $('fsBtn').hidden = true;
+  $('switchBtn').hidden = false;
+  $('switchBtn').addEventListener('click', () => nativeApp.disconnect());
 }
 
 $('fsBtn').addEventListener('click', () => {

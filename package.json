@@ -1,16 +1,72 @@
 {
   "name": "streamdeck-clone",
-  "version": "0.1.0",
-  "description": "Clone logiciel de Stream Deck : interface de gestion des touches et surface de contrôle web.",
+  "productName": "StreamDeck",
+  "version": "0.2.0",
+  "description": "Clone logiciel de Stream Deck : serveur PC, application de configuration et client Android.",
+  "author": "StreamDeck",
+  "license": "MIT",
   "type": "module",
-  "main": "server/index.js",
+  "main": "desktop/main.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
+    "desktop": "electron .",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
     "test": "node --test"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.streamdeck.clone",
+    "productName": "StreamDeck",
+    "files": [
+      "desktop/**",
+      "server/**",
+      "shared/**",
+      "public/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "server/executors/*.ps1"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "desktop/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "StreamDeck",
+      "artifactName": "StreamDeck-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "icon": "desktop/assets/icon.png",
+      "artifactName": "StreamDeck-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "desktop/assets/icon.png",
+      "artifactName": "StreamDeck-${version}.${ext}"
+    }
+  }
 }

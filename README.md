@@ -1,29 +1,58 @@
 # StreamDeck
 
-Clone logiciel d'un Stream Deck. Vous configurez des touches dans une interface
-de gestion, puis vous les déclenchez depuis une surface de contrôle (tablette,
-téléphone ou second écran). Chaque appui envoie l'action au logiciel qui doit la
-recevoir : raccourci clavier, texte, commande multimédia, lancement d'application…
+Clone logiciel d'un Stream Deck, en trois morceaux :
 
-Aucune dépendance à installer : il suffit de [Node.js](https://nodejs.org) 18 ou plus récent.
+| Élément | Rôle |
+| --- | --- |
+| **Application PC** (Windows, Linux, macOS) | Héberge le **serveur** qui exécute les actions, et affiche l'**interface de configuration** des touches. Reste active dans la zone de notification. |
+| **Application Android** | La **console** : on appuie sur les touches depuis le téléphone ou la tablette. Détecte le PC automatiquement sur le Wi-Fi. |
+| Serveur seul (facultatif) | `npm start` : le même serveur sans fenêtre, configurable depuis un navigateur. |
 
-## Démarrage
+Chaque appui sur le téléphone envoie l'action au logiciel qui doit la recevoir sur
+le PC : raccourci clavier, texte, commande multimédia, lancement d'application…
 
-```bash
-npm start
+```
+ ┌──────────── PC ─────────────┐             ┌──── Android ────┐
+ │ Application PC (Electron)   │   Wi-Fi     │ Application     │
+ │  ├─ configuration (fenêtre) │ ◄─────────► │ StreamDeck      │
+ │  └─ serveur :3210 ──► OBS,  │  HTTP 3210  │  (le Deck)      │
+ │     Chrome, Discord…        │  UDP  3211  │                 │
+ └─────────────────────────────┘ (découverte)└─────────────────┘
 ```
 
-Sous Windows, vous pouvez aussi double-cliquer sur `StreamDeck.cmd`.
+## Installation
 
-| Adresse | Rôle |
+Les installateurs sont produits automatiquement par GitHub Actions à chaque
+modification (onglet **Actions** du dépôt → dernière exécution de « Build » →
+section *Artifacts*), et publiés dans **Releases** pour chaque version étiquetée `v*`.
+
+| Fichier | Pour |
 | --- | --- |
-| `http://localhost:3210/` | **Interface de gestion** : affectation des touches |
-| `http://localhost:3210/deck` | **Surface Deck** : la « console » sur laquelle on appuie |
-| `http://<ip-du-pc>:3210/deck` | Le Deck depuis une tablette ou un téléphone du même réseau |
+| `StreamDeck-Setup-x.y.z.exe` | Windows : installateur de l'application PC |
+| `StreamDeck-x.y.z.AppImage` | Linux : application PC |
+| `StreamDeck-Android-x.y.z.apk` | Android 8.0 ou plus récent |
 
-Au démarrage, la console affiche les adresses réseau utilisables.
+### Sur le PC
 
-## Interface de gestion
+1. Lancez l'installateur puis **StreamDeck**.
+2. Au premier lancement, Windows demande l'autorisation réseau : acceptez pour les
+   **réseaux privés**, sinon le téléphone ne pourra pas se connecter.
+3. La fenêtre de configuration s'ouvre. La fermer laisse StreamDeck actif dans la zone
+   de notification (clic sur l'icône pour la rouvrir, clic droit pour le menu :
+   adresse du PC, lancement au démarrage, quitter).
+
+### Sur Android
+
+1. Copiez l'APK sur le téléphone et ouvrez-le (autorisez l'installation
+   d'applications de sources inconnues si Android le demande).
+2. Ouvrez **StreamDeck** : le PC apparaît dans « Sur ce réseau ». Touchez-le.
+   Sinon, saisissez son adresse IP (menu « Connexion Android » de l'icône StreamDeck).
+3. L'application se reconnecte automatiquement au dernier PC. Le bouton ▭ en haut à
+   droite du Deck (ou la touche Retour) permet de changer de PC.
+
+L'écran reste allumé et s'affiche en plein écran ; les touches vibrent légèrement.
+
+## Interface de configuration
 
 - **Bibliothèque d'actions** (à gauche) : glissez une action sur une touche, ou
   cliquez dessus pour l'appliquer à la touche sélectionnée.
@@ -86,29 +115,54 @@ L'indicateur en haut de l'interface de gestion signale si l'envoi est opération
   DNS rebinding).
 - Les actions « Commande système » s'exécutent avec vos droits d'utilisateur.
 
-## Configuration
+## Configuration du serveur
+
+Variables d'environnement (serveur seul, et application PC pour `PORT`) :
 
 | Variable | Défaut | Rôle |
 | --- | --- | --- |
-| `PORT` | `3210` | Port HTTP |
+| `PORT` | `3210` | Port HTTP (la découverte réseau utilise toujours l'UDP 3211) |
 | `HOST` | `0.0.0.0` | Interface d'écoute (`127.0.0.1` pour interdire l'accès réseau) |
 | `DECK_DATA_DIR` | `./data` | Dossier de la configuration (`config.json`) |
-| `DECK_REMOTE_ADMIN` | — | `1` : autorise la gestion depuis un autre appareil |
+| `DECK_REMOTE_ADMIN` | — | `1` : autorise la configuration depuis un autre appareil |
 | `DECK_DRY_RUN` | — | `1` : mode simulation, les actions sont journalisées sans être envoyées |
+
+L'application PC range sa configuration dans le dossier utilisateur
+(`%APPDATA%\StreamDeck\data` sous Windows).
+
+## Développement
+
+Prérequis : [Node.js](https://nodejs.org) 18+ (22 recommandé). Pour Android : JDK 17 et le SDK Android (ou Android Studio).
+
+```bash
+npm start              # serveur seul, sans dépendance → http://localhost:3210/
+npm install            # dépendances de l'application PC (Electron)
+npm run desktop        # application PC en mode développement
+npm run dist:win       # installateur Windows dans dist/
+npm test               # tests unitaires
+
+cd android && ./gradlew assembleRelease   # APK dans android/app/build/outputs/apk/release/
+```
+
+Le projet `android/` s'ouvre aussi directement dans Android Studio.
 
 ## Structure
 
 ```
 server/
-  index.js            Serveur HTTP, API REST et flux temps réel (SSE)
+  app.js              Serveur HTTP : API REST, flux temps réel (SSE), fichiers statiques
+  index.js            Lancement du serveur seul (npm start)
+  discovery.js        Découverte réseau (UDP 3211) pour l'application Android
   store.js            Configuration (validation, écriture atomique)
   actions.js          Exécution des actions
   executors/          Envoi des touches : windows.js (+ agent .ps1), macos.js, linux.js
 shared/keys.js        Définition des touches, commune au serveur et à l'interface
-public/               Interface de gestion (index.html) et surface Deck (deck.html)
-test/                 Tests unitaires (npm test)
-```
-
+public/               Interface de configuration (index.html) et Deck (deck.html)
+desktop/              Application PC (Electron) : fenêtre, zone de notification
+android/              Application Android (Kotlin) : connexion, découverte, Deck plein écran
+scripts/smoke.mjs     Test de fumée utilisé par l'intégration continue
+.github/workflows/    Compilation et publication (APK, installateurs)
+test/                 Tests unitaires
 ## Tests
 
 ```bash

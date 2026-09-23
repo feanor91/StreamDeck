@@ -25,3 +25,4 @@ TestResults.xml
 node_modules/
 data/
 *.log
+dist/
