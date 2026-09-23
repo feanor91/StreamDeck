@@ -121,6 +121,7 @@ body {
     calc((100cqh - (var(--rows) - 1) * var(--gap)) / var(--rows)),
     190px
   );
+  --key-radius: calc(var(--cell) * 0.16);
   display: grid;
   grid-template-columns: repeat(var(--cols), var(--cell));
   grid-auto-rows: var(--cell);
@@ -150,7 +151,7 @@ body {
   padding: 0;
   border: 0;
   background: none;
-  border-radius: 16%;
+  border-radius: var(--key-radius, 16%);
   cursor: pointer;
   touch-action: manipulation;
   transition: transform 0.12s var(--ease);

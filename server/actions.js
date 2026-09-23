@@ -5,7 +5,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Types d'action exécutés côté serveur. Les actions de navigation ("page")
 // sont gérées par la surface Deck elle-même.
-export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay'];
+export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle'];
+
+/**
+ * Touche à bascule : action envoyée selon l'état courant (0 = état 1, 1 = état 2).
+ * Avec `same`, l'état 2 envoie la même action que l'état 1 (ex. une seule touche « G » pour le train).
+ */
+export function toggleAction(action, state) {
+  const list = action?.actions ?? [];
+  return state && !action?.same ? list[1] : list[0];
+}
 
 function runShell(command, cwd) {
   return new Promise((resolve, reject) => {
@@ -68,6 +77,13 @@ export async function runAction(executor, action, depth = 0) {
         await sleep(30);
       }
       return;
+    case 'toggle': {
+      // Hors appui réel (bouton « Tester »), on exécute l'action de l'état demandé.
+      const inner = toggleAction(action, action.testState ?? 0);
+      if (!inner?.type) throw new Error('Aucune action définie pour cet état de la bascule.');
+      if (inner.type === 'toggle') throw new Error('Une bascule ne peut pas en contenir une autre.');
+      return runAction(executor, inner, depth + 1);
+    }
     case 'page':
       return; // navigation gérée par le client
     default:
