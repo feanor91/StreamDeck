@@ -1,0 +1,126 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  windows-agent:
+    name: Agent Windows (envoi des touches)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Démarrer le serveur et tester l'agent PowerShell
+        shell: pwsh
+        run: |
+          $server = Start-Process node -ArgumentList 'server/index.js' -PassThru -NoNewWindow -RedirectStandardOutput server.log -RedirectStandardError server.err
+          try {
+            node scripts/smoke.mjs --send
+            if ($LASTEXITCODE -ne 0) { throw "Test de fumée en échec" }
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+            Get-Content server.log, server.err -ErrorAction SilentlyContinue
+          }
+
+  android:
+    name: Application Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compiler l'APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+      - name: Renommer l'APK
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/StreamDeck-Android-$VERSION.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamDeck-Android
+          path: out/*.apk
+          if-no-files-found: error
+
+  desktop:
+    name: Application PC (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dist: dist:win
+            files: dist/*.exe
+            name: StreamDeck-Windows
+          - os: ubuntu-latest
+            dist: dist:linux
+            files: dist/*.AppImage
+            name: StreamDeck-Linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test de démarrage de l'application (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a npx electron . --no-sandbox > electron.log 2>&1 &
+          # Mode simulation indisponible ici : xdotool absent, on vérifie seulement que le serveur intégré répond.
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3210/api/status && break; sleep 1; done
+          curl -sf http://127.0.0.1:3210/api/status > /dev/null || (cat electron.log; exit 1)
+          curl -sf http://127.0.0.1:3210/ | grep -q "Gestion des touches"
+          echo "Application PC démarrée, serveur intégré opérationnel."
+      - name: Empaqueter
+        run: npm run ${{ matrix.dist }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    name: Publication
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, windows-agent, android, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo : 4 touches, la première en dégradé violet → bleu. Zone sûre 66dp centrée. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M37,32h10a5,5 0,0 1,5 5v10a5,5 0,0 1,-5 5h-10a5,5 0,0 1,-5 -5v-10a5,5 0,0 1,5 -5z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="32" android:startY="32"
+                android:endX="52" android:endY="52"
+                android:startColor="#FF8B7BFF"
+                android:endColor="#FF4EA1FF" />
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#38FFFFFF"
+        android:pathData="M61,32h10a5,5 0,0 1,5 5v10a5,5 0,0 1,-5 5h-10a5,5 0,0 1,-5 -5v-10a5,5 0,0 1,5 -5z" />
+    <path android:fillColor="#38FFFFFF"
+        android:pathData="M37,56h10a5,5 0,0 1,5 5v10a5,5 0,0 1,-5 5h-10a5,5 0,0 1,-5 -5v-10a5,5 0,0 1,5 -5z" />
+    <path android:fillColor="#38FFFFFF"
+        android:pathData="M61,56h10a5,5 0,0 1,5 5v10a5,5 0,0 1,-5 5h-10a5,5 0,0 1,-5 -5v-10a5,5 0,0 1,5 -5z" />
+</vector>
