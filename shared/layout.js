@@ -88,3 +88,27 @@ export function faceFor(key, state = 0) {
 
 /** Identifiant stable de l'état d'une touche à bascule. */
 export const stateKey = (profileId, pageId, index) => `${profileId}/${pageId}/${index}`;
+
+/**
+ * Choisit l'orientation d'affichage de la grille pour remplir un écran W×H :
+ * la grille configurée (ex. 3 lignes × 5 colonnes) ou sa transposée (5 × 3),
+ * selon celle qui donne les touches les plus proches du carré.
+ * Retourne { rows, cols, transposed }.
+ */
+export function fitGrid(rows, cols, width, height) {
+  if (rows === cols || !width || !height) return { rows, cols, transposed: false };
+  const distortion = (r, c) => Math.abs(Math.log(width / c / (height / r)));
+  // Petite marge pour ne pas basculer d'une disposition à l'autre sur un écran presque carré.
+  const transposed = distortion(cols, rows) + 0.1 < distortion(rows, cols);
+  return transposed ? { rows: cols, cols: rows, transposed } : { rows, cols, transposed };
+}
+
+/**
+ * Place une cellule calculée par computeCells dans la grille affichée.
+ * En disposition transposée, la ligne devient la colonne (et une touche fusionnée
+ * 2×1 devient 1×2) : les groupes de touches voisines sont conservés.
+ */
+export function orientCell(cell, transposed) {
+  if (!transposed) return cell;
+  return { ...cell, row: cell.col, col: cell.row, w: cell.h, h: cell.w };
+}

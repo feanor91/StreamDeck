@@ -10,6 +10,10 @@ import { runAction, toggleAction } from './actions.js';
 import { ToggleStates } from './states.js';
 import { stateKey } from '../shared/layout.js';
 import { startDiscovery } from './discovery.js';
+import { createMsfs } from './msfs.js';
+import { clamp, levelToValue, valueToLevel, notchDelta, MAX_STEPS } from '../shared/controls.js';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -122,6 +126,8 @@ export async function startDeckServer({
   dryRun = false,
   remoteAdmin = false,
   discovery = true,
+  msfs: msfsEnabled = true,
+  msfsLoader, // tests : remplace le module node-simconnect par une imitation
   log = console,
 } = {}) {
   const store = new Store(dataDir);
@@ -132,6 +138,109 @@ export async function startDeckServer({
   let revision = 0;
 
   const deckUrls = () => lanAddresses().map((a) => `http://${a}:${port}/deck`);
+
+  // --- Microsoft Flight Simulator -------------------------------------------------------
+  // Liaisons entre les touches et les variables du simulateur :
+  //  - bascule avec `sync.simvar`      → état on/off ;
+  //  - bouton rotatif avec `display`   → valeur affichée (ex. cap sélecté) ;
+  //  - curseur avec `sync`             → position du curseur.
+  const liveValues = {}; // touche → dernière valeur affichée
+  function simBindings() {
+    const out = [];
+    for (const p of store.config?.profiles ?? []) {
+      for (const pg of p.pages) {
+        for (const [index, key] of Object.entries(pg.keys)) {
+          const a = key?.action;
+          const sk = stateKey(p.id, pg.id, index);
+          const up = (v) => String(v).trim().toUpperCase();
+          if (a?.type === 'toggle' && a.sync?.simvar) {
+            out.push({ sk, kind: 'toggle', simvar: up(a.sync.simvar), unit: 'Bool', invert: !!a.sync.invert });
+          } else if (a?.type === 'dial' && a.display?.simvar) {
+            out.push({ sk, kind: 'value', simvar: up(a.display.simvar), unit: a.display.unit || 'number' });
+          } else if (a?.type === 'slider' && a.sync?.simvar) {
+            out.push({ sk, kind: 'level', simvar: up(a.sync.simvar), unit: a.sync.unit || 'percent', min: a.sync.min ?? 0, max: a.sync.max ?? 100 });
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  function applySimvar(simvar, value, unit = 'Bool') {
+    if (value === null || value === undefined) return;
+    for (const b of simBindings()) {
+      if (b.simvar !== simvar || b.unit.toLowerCase() !== String(unit).toLowerCase()) continue;
+      if (b.kind === 'toggle') {
+        const on = (Number(value) !== 0) !== b.invert ? 1 : 0;
+        if (toggles.get(b.sk) === on) continue;
+        toggles.set(b.sk, on);
+        broadcast('state', { key: b.sk, state: on });
+      } else if (b.kind === 'value') {
+        if (liveValues[b.sk] === value) continue;
+        liveValues[b.sk] = value;
+        broadcast('value', { key: b.sk, value });
+      } else {
+        const level = valueToLevel(value, b.min, b.max);
+        if (Math.abs((toggles.getLevel(b.sk) ?? -1) - level) < 0.002) continue;
+        broadcast('level', { key: b.sk, level: toggles.setLevel(b.sk, level) });
+      }
+    }
+  }
+
+  const msfs = createMsfs({
+    log,
+    ...(msfsLoader ? { load: msfsLoader } : {}),
+    onStatus: (s) => broadcast('msfs', s),
+    onValue: applySimvar,
+  });
+
+  function refreshSimWatch() {
+    const bindings = simBindings();
+    msfs.watch(bindings.map(({ simvar, unit }) => ({ simvar, unit })));
+    for (const b of bindings) applySimvar(b.simvar, msfs.value(b.simvar, b.unit), b.unit);
+  }
+
+  // Bouton rotatif et curseur : un geste (crans, position) ou un appui.
+  async function handleContinuous(key, sk, input) {
+    const a = key.action;
+    if (!input || input.kind === 'press') {
+      if (!a.press?.type) return { ok: true };
+      await runAction(executor, a.press, 0, ctx);
+      return { ok: true };
+    }
+    if (a.type === 'dial' && input.kind === 'dial') {
+      const delta = Math.trunc(Number(input.delta) || 0);
+      const act = delta > 0 ? a.inc : a.dec;
+      if (!delta) return { ok: true, steps: 0 };
+      if (!act?.type) throw new Error(`Aucune action « ${delta > 0 ? '+' : '−'} » définie pour ce bouton.`);
+      const n = Math.min(Math.abs(delta), MAX_STEPS);
+      for (let i = 0; i < n; i++) {
+        await runAction(executor, act, 0, ctx);
+        if (act.type !== 'msfs') await sleep(25); // laisse le logiciel encaisser les frappes clavier
+      }
+      return { ok: true, steps: n };
+    }
+    if (a.type === 'slider' && input.kind === 'slider') {
+      const level = clamp(Number(input.level) || 0, 0, 1);
+      if ((a.mode ?? 'value') === 'value') {
+        if (a.set?.type !== 'msfs' || !a.set.event) throw new Error('Choisissez la commande MSFS qui reçoit la position du curseur.');
+        await runAction(executor, { ...a.set, value: levelToValue(level, a.min ?? 0, a.max ?? 16383) }, 0, ctx);
+      } else {
+        const d = notchDelta(toggles.getLevel(sk) ?? 0, level, a.notches ?? 10);
+        const act = d > 0 ? a.inc : a.dec;
+        if (d && !act?.type) throw new Error(`Aucune action « ${d > 0 ? '+' : '−'} » définie pour ce curseur.`);
+        for (let i = 0; i < Math.min(Math.abs(d), MAX_STEPS); i++) {
+          await runAction(executor, act, 0, ctx);
+          if (act.type !== 'msfs') await sleep(25);
+        }
+      }
+      const saved = toggles.setLevel(sk, level);
+      broadcast('level', { key: sk, level: saved, origin: input.clientId ?? null });
+      return { ok: true, level: saved };
+    }
+    throw httpError('Geste non pris en charge par cette touche.', 400);
+  }
+  const ctx = { msfs };
 
   function broadcast(event, data) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -150,7 +259,7 @@ export async function startDeckServer({
     checkRequestOrigin(req);
     switch (`${req.method} ${pathname}`) {
       case 'GET /api/config':
-        return send(res, 200, { revision, config: store.config, states: toggles.all() });
+        return send(res, 200, { revision, config: store.config, states: toggles.all(), levels: toggles.levels(), values: liveValues });
 
       case 'PUT /api/config': {
         requireAdmin(req);
@@ -162,6 +271,7 @@ export async function startDeckServer({
         }
         revision++;
         broadcast('config', { revision, origin: body.clientId ?? null, config: store.config });
+        refreshSimWatch();
         return send(res, 200, { revision });
       }
 
@@ -179,10 +289,11 @@ export async function startDeckServer({
           addresses: lanAddresses(),
           port,
           layouts: LAYOUTS,
+          msfs: msfsEnabled ? msfs.status : { available: false, connected: false, reason: 'Liaison MSFS désactivée.' },
         });
 
       case 'POST /api/press': {
-        const { profileId, pageId, index, syncOnly } = await readJson(req);
+        const { profileId, pageId, index, syncOnly, input } = await readJson(req);
         const key = findKey(store.config, profileId, pageId, index);
         if (!key) throw httpError('Touche vide.', 404);
         const started = Date.now();
@@ -195,15 +306,29 @@ export async function startDeckServer({
           broadcast('state', { key: sk, state });
           return send(res, 200, { ok: true, state });
         }
+        if (key.action?.type === 'dial' || key.action?.type === 'slider') {
+          try {
+            const result = await handleContinuous(key, sk, input);
+            if (!input || input.kind === 'press') broadcast('press', { profileId, pageId, index, ok: true });
+            return send(res, 200, result);
+          } catch (e) {
+            broadcast('press', { profileId, pageId, index, ok: false, error: e.message });
+            throw Object.assign(e, { status: e.status ?? 422 });
+          }
+        }
         try {
           if (isToggle) {
             const inner = toggleAction(key.action, toggles.get(sk));
             if (!inner?.type) throw new Error('Aucune action définie pour cet état de la bascule.');
-            await runAction(executor, inner);
-            const state = toggles.set(sk, !toggles.get(sk));
-            broadcast('state', { key: sk, state });
+            await runAction(executor, inner, 0, ctx);
+            // Bascule synchronisée avec MSFS : l'état viendra du simulateur lui-même.
+            const simSynced = key.action.sync?.simvar && msfs.status.connected;
+            if (!simSynced) {
+              const state = toggles.set(sk, !toggles.get(sk));
+              broadcast('state', { key: sk, state });
+            }
           } else {
-            await runAction(executor, key.action);
+            await runAction(executor, key.action, 0, ctx);
           }
           broadcast('press', { profileId, pageId, index, ok: true });
           return send(res, 200, { ok: true, ms: Date.now() - started, state: isToggle ? toggles.get(sk) : undefined });
@@ -217,7 +342,7 @@ export async function startDeckServer({
         requireAdmin(req);
         const { action } = await readJson(req);
         try {
-          await runAction(executor, action);
+          await runAction(executor, action, 0, ctx);
         } catch (e) {
           throw Object.assign(e, { status: 422 });
         }
@@ -266,6 +391,7 @@ export async function startDeckServer({
 
   await store.load();
   await toggles.load();
+  refreshSimWatch();
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {
@@ -275,6 +401,7 @@ export async function startDeckServer({
   });
 
   const disco = discovery ? startDiscovery({ port, version: VERSION, log }) : null;
+  if (msfsEnabled) msfs.start();
 
   const ready = executor.check().then((s) => {
     executorStatus = s;
@@ -290,6 +417,7 @@ export async function startDeckServer({
     deckUrls,
     async close() {
       disco?.close();
+      msfs.close();
       await toggles.flush().catch(() => {});
       for (const res of clients) res.end();
       clients.clear();

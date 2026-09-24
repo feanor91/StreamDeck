@@ -107,6 +107,16 @@ jobs:
         run: npm run ${{ matrix.dist }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Vérifier que la liaison MSFS est embarquée
+        shell: bash
+        run: |
+          ASAR=$(ls dist/*-unpacked/resources/app.asar)
+          # Sous Windows, la liste utilise des « \ » : on normalise les séparateurs.
+          npx --yes @electron/asar list "$ASAR" | tr '\\' '/' > asar.txt
+          grep -q "node_modules/node-simconnect/dist/index.js" asar.txt
+          grep -q "public/icons/avia/gear-down.svg" asar.txt
+          echo "node-simconnect et icônes aviation présents dans $ASAR"
+          ls dist/*-unpacked/resources/app.asar.unpacked/node_modules/regedit/vbs | head -3
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

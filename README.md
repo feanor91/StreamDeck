@@ -54,6 +54,10 @@ publication sont créées automatiquement.
    droite du Deck (ou la touche Retour) permet de changer de PC.
 
 L'écran reste allumé et s'affiche en plein écran ; les touches vibrent légèrement.
+Les touches occupent **tout l'écran**, en portrait comme en paysage : en portrait,
+une grille pensée pour le paysage (ex. 3×5) s'affiche en 5×3 (lignes et colonnes
+inversées, touches fusionnées comprises) pour garder des touches presque carrées ;
+icônes et titres s'agrandissent ou rétrécissent avec les touches.
 
 Sur **Android 7 à 9**, l'affichage du Deck repose sur **Google Chrome** (et sur
 **Android System WebView** à partir d'Android 10) : mettez-le à jour depuis le Play
@@ -91,6 +95,9 @@ Raccourcis clavier : flèches pour se déplacer, `Suppr` pour effacer,
 | Commande système | Exécute une commande shell |
 | Page | Change la page du Deck (page précise, suivante ou précédente) |
 | Multi-actions | Enchaîne plusieurs actions avec des pauses |
+| Commande MSFS | Envoie une commande à Microsoft Flight Simulator (SimConnect) |
+| Bouton rotatif | Tourner (glisser le doigt) pour « + » / « − », appuyer pour valider ; peut afficher une valeur du simulateur |
+| Curseur | Glisser pour régler une position (gaz, volets…) ou envoyer des crans « + » / « − » |
 | Bascule (2 états) | Alterne entre deux états (ex. train rentré / sorti) : titre, icône, couleur et action propres à chaque état |
 
 ### Touches à bascule
@@ -108,6 +115,61 @@ d'état ; deux pastilles indiquent l'état courant.
 - Préréglages prêts à l'emploi dans la bibliothèque, catégorie *Simulation* :
   train d'atterrissage, feux d'atterrissage, frein de parc (raccourcis par
   défaut de Microsoft Flight Simulator, modifiables).
+
+### Microsoft Flight Simulator 2024 (et 2020)
+
+StreamDeck pilote MSFS directement par **SimConnect**, l'interface officielle
+intégrée au simulateur :
+
+- **aucun fichier de configuration** : quand StreamDeck tourne sur le même PC que
+  le simulateur, la liaison s'établit toute seule dès que MSFS est lancé
+  (indicateur « MSFS connecté » en haut de l'écran de configuration) ;
+- les commandes partent **même si la fenêtre du simulateur n'a pas le focus**, et
+  ne dépendent pas de vos affectations clavier ;
+- les touches à bascule affichent **l'état réel** de l'avion (train sorti, feux
+  allumés, pilote automatique engagé…), même si vous agissez à la souris dans le
+  cockpit.
+
+Dans la bibliothèque, catégorie *MSFS 2024 (SimConnect)* : 37 touches prêtes à
+l'emploi (train, frein de parc, volets, aérofreins, compensateur, feux, modes du
+pilote automatique, batterie, avionique, pitot, ceintures, radios, pause,
+pushback…) avec leurs icônes. L'action « Commande MSFS » donne accès à une
+cinquantaine de commandes, ou à n'importe quel événement SimConnect par son nom.
+L'onglet *Aviation* du choix d'icône propose 36 icônes dédiées.
+
+> Certains avions très détaillés (Fenix, PMDG, FlyByWire…) ont leurs propres
+> systèmes et ignorent une partie des commandes standard ; pour eux, utilisez des
+> raccourcis clavier (catégorie *Simulation (raccourcis clavier)*).
+
+La liaison utilise la bibliothèque [node-simconnect](https://github.com/EvenAR/node-simconnect)
+(licence LGPL-3.0).
+
+### Boutons rotatifs et curseurs
+
+**Bouton rotatif** (catégorie *Avancé*, ou préréglages MSFS HDG, ALT, VS, SPD,
+CRS, BARO, molette de compensateur) :
+
+- sur le Deck, glissez le doigt vers la droite ou vers le haut pour « + », vers
+  la gauche ou vers le bas pour « − » ; chaque cran envoie l'action correspondante
+  (sensibilité fine, normale ou rapide) ;
+- **un appui sans glisser déclenche l'action d'appui** : valider une valeur,
+  engager un mode du pilote automatique, caler l'altimètre… ;
+- sur PC, la molette de la souris tourne le bouton ;
+- le bouton peut afficher en direct une valeur de MSFS (cap sélecté « 275° »,
+  altitude « 12 000 ft », calage « 1013 hPa »…).
+
+**Curseur** (préréglages MSFS : manette des gaz, volets, aérofreins, mélange,
+pas d'hélice) :
+
+- vertical si la touche est plus haute que large : fusionnez-la en 1×3 pour
+  obtenir un vrai levier ; horizontal sinon ;
+- mode *Position (MSFS)* : la position est envoyée en continu au simulateur
+  (ex. `THROTTLE_SET` de 0 à 16383) et le curseur suit le levier si vous le
+  bougez dans le cockpit ;
+- mode *Pas à pas* : glisser d'un bout à l'autre envoie un nombre réglable de
+  « + » ou de « − » (raccourcis clavier, commandes…), pour n'importe quel logiciel ;
+- un appui sans glisser déclenche l'action d'appui si elle est définie, sinon le
+  curseur saute à l'endroit touché.
 
 ### Touches fusionnées
 
@@ -184,14 +246,21 @@ server/
   app.js              Serveur HTTP : API REST, flux temps réel (SSE), fichiers statiques
   index.js            Lancement du serveur seul (npm start)
   discovery.js        Découverte réseau (UDP 3211) pour l'application Android
+  msfs.js             Liaison Microsoft Flight Simulator (SimConnect)
+  states.js           États des touches à bascule
   store.js            Configuration (validation, écriture atomique)
   actions.js          Exécution des actions
   executors/          Envoi des touches : windows.js (+ agent .ps1), macos.js, linux.js
 shared/keys.js        Définition des touches, commune au serveur et à l'interface
+shared/layout.js      Placement des touches (fusion, orientation), bascules
+shared/controls.js    Boutons rotatifs et curseurs : conversions, affichage des valeurs
+shared/msfs.js        Catalogue MSFS : commandes, variables, préréglages
+public/icons/avia/    Icônes aviation (SVG)
 public/               Interface de configuration (index.html) et Deck (deck.html)
 desktop/              Application PC (Electron) : fenêtre, zone de notification
 android/              Application Android (Kotlin) : connexion, découverte, Deck plein écran
 scripts/smoke.mjs     Test de fumée utilisé par l'intégration continue
+scripts/fake-msfs-server.mjs  Serveur relié à un faux simulateur (développement)
 .github/workflows/    Compilation et publication (APK, installateurs)
 test/                 Tests unitaires
 ## Tests

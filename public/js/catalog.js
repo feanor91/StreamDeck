@@ -1,6 +1,8 @@
 import { formatHotkey, MEDIA_ACTIONS } from '/shared/keys.js';
 import { h } from './dom.js';
 import { faceFor } from '/shared/layout.js';
+import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS } from '/shared/msfs.js';
+import { formatDisplay } from '/shared/controls.js';
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -80,6 +82,60 @@ export const ACTION_TYPES = {
       return ctx?.pages?.find((p) => p.id === a.pageId)?.name ?? 'Aucune page choisie';
     },
   },
+  msfs: {
+    label: 'MSFS',
+    long: 'Commande MSFS',
+    desc: 'Envoie une commande à Flight Simulator',
+    icon: '🛩️',
+    color: '#0ea5e9',
+    create: () => ({ type: 'msfs', event: '', value: 0 }),
+    face: { icon: '/public/icons/avia/plane.svg', color: '#0c4a6e' },
+    summary: (a) => (a.event ? MSFS_EVENT_LABELS[a.event] ?? a.event : 'Aucune commande choisie'),
+  },
+  dial: {
+    label: 'Rotatif',
+    long: 'Bouton rotatif',
+    desc: 'Tourner pour régler, appuyer pour valider',
+    icon: '🎛️',
+    color: '#06b6d4',
+    create: () => ({
+      type: 'dial',
+      sensitivity: 'normal',
+      inc: { type: 'hotkey', hotkey: { modifiers: [], key: '' }, target: { by: 'none', value: '' } },
+      dec: { type: 'hotkey', hotkey: { modifiers: [], key: '' }, target: { by: 'none', value: '' } },
+      press: null,
+      display: null,
+    }),
+    face: { icon: '🎛️', color: '#1e2533', title: 'Rotatif' },
+    summary: (a, ctx) => {
+      const sum = (x) => (x?.type ? ACTION_TYPES[x.type]?.summary(x, ctx) : '—');
+      return `+ ${sum(a.inc)} · − ${sum(a.dec)}${a.press?.type ? ` · appui : ${sum(a.press)}` : ''}`;
+    },
+  },
+  slider: {
+    label: 'Curseur',
+    long: 'Curseur',
+    desc: 'Glisser pour régler une position',
+    icon: '🎚️',
+    color: '#06b6d4',
+    create: () => ({
+      type: 'slider',
+      mode: 'steps',
+      notches: 10,
+      inc: { type: 'hotkey', hotkey: { modifiers: [], key: '' }, target: { by: 'none', value: '' } },
+      dec: { type: 'hotkey', hotkey: { modifiers: [], key: '' }, target: { by: 'none', value: '' } },
+      set: { type: 'msfs', event: 'THROTTLE_SET' },
+      min: 0,
+      max: 16383,
+      press: null,
+      sync: null,
+    }),
+    face: { icon: '🎚️', color: '#1e2533', title: 'Curseur' },
+    summary: (a) =>
+      (a.mode ?? 'value') === 'value'
+        ? `Position → ${MSFS_EVENT_LABELS[a.set?.event] ?? a.set?.event ?? '—'}`
+        : `${a.notches ?? 10} crans · + / −`,
+  },
   toggle: {
     label: 'Bascule',
     long: 'Bascule (2 états)',
@@ -151,10 +207,14 @@ export const LIBRARY = [
   },
   {
     group: 'Avancé',
-    items: [{ type: 'multi' }, { type: 'toggle' }],
+    items: [{ type: 'multi' }, { type: 'toggle' }, { type: 'dial' }, { type: 'slider' }],
   },
   {
-    group: 'Simulation',
+    group: 'MSFS 2024 (SimConnect)',
+    items: [{ type: 'msfs' }, ...MSFS_PRESETS, ...MSFS_DIAL_PRESETS, ...MSFS_SLIDER_PRESETS],
+  },
+  {
+    group: 'Simulation (raccourcis clavier)',
     items: [
       {
         type: 'toggle',
@@ -206,6 +266,15 @@ export const LIBRARY = [
 ];
 
 export function libraryItemInfo(item) {
+  if (item.action) {
+    // Préréglage complet (ex. MSFS) : action et apparence fournies.
+    return {
+      label: item.label,
+      desc: { toggle: 'MSFS · état synchronisé', dial: 'MSFS · bouton rotatif', slider: 'MSFS · curseur' }[item.action.type] ?? 'MSFS · commande',
+      icon: item.face.icon,
+      color: '#0ea5e9',
+    };
+  }
   const t = ACTION_TYPES[item.type];
   return {
     label: item.label ?? t.long,
@@ -216,6 +285,10 @@ export function libraryItemInfo(item) {
 }
 
 export function createFromLibrary(item) {
+  if (item.action) {
+    const copy = JSON.parse(JSON.stringify(item));
+    return { action: copy.action, face: copy.alt ? { ...copy.face, alt: copy.alt } : copy.face };
+  }
   const t = ACTION_TYPES[item.type];
   const face = { title: item.title ?? t.face.title ?? t.label, icon: item.icon ?? t.face.icon, color: item.color ?? t.face.color };
   const alt = item.alt ?? t.alt;
@@ -236,10 +309,61 @@ export const EMOJIS = (
   '🚀 🌐 🔍 🔗 📊 📈 🗂️ 🗓️ ⏰ ⏱️ ☕ 🍕 💡 🔥 ⭐ ❤️ 👍 👎 👏 🎉 ✅ ❌ ⚠️ ❓ 💯 ➕ ➖ ↩️ ↪️ ⬅️ ➡️ ⬆️ ⬇️ 🏠 🌙 ☀️ 🌈 ⚡ 🐱 🐶 🦊 🤖 👾 😀 😂 😎 🤔 😴'
 ).split(' ');
 
+// Icône fournie par l'application (ex. /public/icons/avia/gear-down.svg).
+export const isIconPath = (icon) => typeof icon === 'string' && /^\/public\/icons\/[\w/-]+\.svg$/.test(icon);
+
+function iconNode(icon, cls = 'kf-icon') {
+  if (!icon) return null;
+  if (icon.startsWith('data:')) return h('img', { class: cls, src: icon, alt: '', draggable: 'false' });
+  if (isIconPath(icon)) return h('img', { class: `${cls} kf-svg`, src: icon, alt: '', draggable: 'false' });
+  return h('span', { class: cls }, icon);
+}
+
+// Bouton rotatif : cadran avec repère orienté (angle), valeur ou icône au centre.
+function dialFace(key, live) {
+  const el = h('div', { class: 'keyface kf-dial-key' });
+  el.style.setProperty('--key-color', key.color || '#1e2533');
+  const ticks = Array.from({ length: 24 }, (_, i) => {
+    const a = (i / 24) * Math.PI * 2;
+    const r1 = i % 6 ? 40 : 37;
+    return `<line x1="${50 + Math.sin(a) * r1}" y1="${50 - Math.cos(a) * r1}" x2="${50 + Math.sin(a) * 44}" y2="${50 - Math.cos(a) * 44}"/>`;
+  }).join('');
+  const dial = h('div', {
+    class: 'kf-dial',
+    html: `<svg viewBox="0 0 100 100"><g class="ticks">${ticks}</g><circle class="knob" cx="50" cy="50" r="33"/><g class="needle"><line x1="50" y1="22" x2="50" y2="30"/></g></svg>`,
+  });
+  dial.style.setProperty('--angle', `${live.angle ?? 0}deg`);
+  const hasValue = !!key.action?.display?.simvar;
+  const center = h('span', { class: 'kf-dial-center' }, hasValue ? h('span', { class: 'kf-value' }, formatDisplay(live.value, key.action.display)) : iconNode(key.icon, 'kf-dial-icon'));
+  dial.append(center);
+  el.append(dial);
+  if (key.showTitle !== false && key.title) el.append(h('span', { class: 'kf-title' }, key.title));
+  return el;
+}
+
+// Curseur : piste, remplissage selon la position, poignée ; vertical si la touche est plus haute que large.
+function sliderFace(key, live) {
+  const vertical = live.vertical !== false;
+  const el = h('div', { class: `keyface kf-slider-key ${vertical ? 'vertical' : 'horizontal'}` });
+  el.style.setProperty('--key-color', key.color || '#1e2533');
+  const level = Math.min(1, Math.max(0, Number(live.level) || 0));
+  const track = h('div', { class: 'kf-track' }, h('div', { class: 'kf-fill' }), h('div', { class: 'kf-thumb' }));
+  el.style.setProperty('--level', level);
+  el.append(
+    h('div', { class: 'kf-slider-head' }, iconNode(key.icon, 'kf-slider-icon'), h('span', { class: 'kf-value' }, `${Math.round(level * 100)} %`)),
+    track,
+  );
+  if (key.showTitle !== false && key.title) el.append(h('span', { class: 'kf-title' }, key.title));
+  return el;
+}
+
 // Construit le rendu visuel d'une touche (utilisé par la gestion et le Deck).
 // `state` : état courant d'une touche à bascule (0 ou 1).
-export function keyFace(rawKey, state = 0) {
+// `live`  : valeurs en direct des touches continues ({ value, level, angle, vertical }).
+export function keyFace(rawKey, state = 0, live = {}) {
   if (!rawKey) return h('div', { class: 'keyface empty' });
+  if (rawKey.action?.type === 'dial') return dialFace(rawKey, live);
+  if (rawKey.action?.type === 'slider') return sliderFace(rawKey, live);
   const key = faceFor(rawKey, state);
   const showTitle = key.showTitle !== false && key.title;
   const hasIcon = !!key.icon;
@@ -249,6 +373,7 @@ export function keyFace(rawKey, state = 0) {
   el.style.setProperty('--key-color', key.color || '#1c202a');
   if (hasIcon) {
     if (key.icon.startsWith('data:')) el.append(h('img', { class: 'kf-icon', src: key.icon, alt: '', draggable: 'false' }));
+    else if (isIconPath(key.icon)) el.append(h('img', { class: 'kf-icon kf-svg', src: key.icon, alt: '', draggable: 'false' }));
     else el.append(h('span', { class: 'kf-icon' }, key.icon));
   }
   if (showTitle) el.append(h('span', { class: 'kf-title' }, key.title));

@@ -1,11 +1,15 @@
 import { api, subscribe } from './api.js';
 import { h, toast } from './dom.js';
 import { keyFace } from './catalog.js';
-import { computeCells, stateKey } from '/shared/layout.js';
+import { computeCells, stateKey, fitGrid, orientCell } from '/shared/layout.js';
+import { DIAL_SENSITIVITY, clamp } from '/shared/controls.js';
+import { clientId } from './api.js';
 
 const $ = (id) => document.getElementById(id);
 
-const state = { config: null, layouts: null, profileId: null, pageId: null, toggles: {} };
+const state = { config: null, layouts: null, profileId: null, pageId: null, toggles: {}, levels: {}, values: {} };
+const angles = {}; // angle affiché du repère de chaque bouton rotatif (visuel local)
+const dragging = new Set(); // curseurs en cours de manipulation : on ignore les positions reçues
 const LONG_PRESS_MS = 600;
 
 // Pont fourni par l'application Android (absent dans un navigateur).
@@ -39,15 +43,37 @@ function goToPage(id, direction = 0) {
   render(direction || (to > idx ? 1 : -1));
 }
 
+// Disposition affichée : la grille remplit tout l'écran ; en portrait, une grille
+// pensée pour le paysage (ex. 3×5) est transposée (5×3) pour garder des touches
+// proches du carré. Retourne aussi le rayon des coins adapté à la taille des touches.
+function displayLayout() {
+  const { rows, cols } = layout();
+  const stage = $('stage');
+  const style = getComputedStyle(stage);
+  const w = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const hgt = stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  const fit = fitGrid(rows, cols, w, hgt);
+  const gap = Math.max(6, Math.min(16, Math.min(w, hgt) * 0.018));
+  const cellW = (w - (fit.cols - 1) * gap) / fit.cols;
+  const cellH = (hgt - (fit.rows - 1) * gap) / fit.rows;
+  return { ...fit, gap, radius: Math.max(8, Math.min(cellW, cellH) * 0.14), key: `${fit.rows}x${fit.cols}` };
+}
+
+let lastLayoutKey = '';
+
 function render(direction = 0) {
   const { rows, cols } = layout();
+  const view = displayLayout();
+  lastLayoutKey = view.key;
   const grid = $('deckGrid');
-  grid.style.setProperty('--cols', cols);
-  grid.style.setProperty('--rows', rows);
+  grid.style.setProperty('--cols', view.cols);
+  grid.style.setProperty('--rows', view.rows);
+  grid.style.setProperty('--gap', `${view.gap}px`);
+  grid.style.setProperty('--key-radius', `${view.radius}px`);
 
   const pg = page();
   const { cells } = computeCells(pg.keys, rows, cols);
-  grid.replaceChildren(...cells.map((cell) => buildKey(pg, cell)));
+  grid.replaceChildren(...cells.map((cell) => buildKey(pg, orientCell(cell, view.transposed))));
 
   grid.classList.remove('slide-left', 'slide-right');
   if (direction) {
@@ -69,9 +95,16 @@ function render(direction = 0) {
 
 const toggleState = (pageId, i) => (state.toggles[stateKey(profile().id, pageId, i)] ? 1 : 0);
 
+// Valeurs en direct d'une touche continue (bouton rotatif, curseur).
+function liveOf(pageId, i, cell) {
+  const sk = stateKey(profile().id, pageId, i);
+  return { value: state.values[sk], level: state.levels[sk] ?? 0, angle: angles[sk] ?? 0, vertical: cell ? cell.h >= cell.w : true };
+}
+
 function buildKey(pg, cell) {
   const i = cell.index;
   const key = cell.key;
+  if (key?.action?.type === 'dial' || key?.action?.type === 'slider') return buildControl(pg, cell);
   const el = h(
     'button',
     {
@@ -112,6 +145,167 @@ function buildKey(pg, cell) {
   el.addEventListener('pointercancel', release);
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   return el;
+}
+
+// ---------------------------------------------------------------------------
+// Bouton rotatif et curseur
+// ---------------------------------------------------------------------------
+function buildControl(pg, cell) {
+  const i = cell.index;
+  const key = cell.key;
+  const sk = stateKey(profile().id, pg.id, i);
+  const isDial = key.action.type === 'dial';
+  const el = h(
+    'button',
+    {
+      class: `dkey control ${isDial ? 'dial' : 'slider'}`,
+      'aria-label': key.title || (isDial ? 'Bouton rotatif' : 'Curseur'),
+      dataset: { index: i },
+      style: { gridColumn: `${cell.col + 1} / span ${cell.w}`, gridRow: `${cell.row + 1} / span ${cell.h}` },
+    },
+    keyFace(key, 0, liveOf(pg.id, i, cell)),
+  );
+  const repaint = () => el.querySelector('.keyface')?.replaceWith(keyFace(key, 0, liveOf(pg.id, i, cell)));
+
+  // Envois regroupés : un seul appel réseau à la fois, les gestes s'accumulent entre-temps.
+  let inflight = false;
+  let pendingDelta = 0;
+  let pendingLevel = null;
+  const flush = () => {
+    if (inflight) return;
+    let input = null;
+    if (pendingDelta) {
+      input = { kind: 'dial', delta: pendingDelta };
+      pendingDelta = 0;
+    } else if (pendingLevel !== null) {
+      input = { kind: 'slider', level: pendingLevel };
+      pendingLevel = null;
+    }
+    if (!input) return;
+    inflight = true;
+    api
+      .control(profile().id, pg.id, i, input)
+      .catch((e) => {
+        feedback(el, 'err');
+        toast(e.message, 'err', 4000);
+      })
+      .finally(() => {
+        inflight = false;
+        flush();
+      });
+  };
+
+  const tap = () => {
+    if (nativeApp) nativeApp.haptic();
+    else navigator.vibrate?.(12);
+    if (!key.action.press?.type) return false;
+    api
+      .control(profile().id, pg.id, i, { kind: 'press' })
+      .then(() => feedback(el, 'ok'))
+      .catch((e) => {
+        feedback(el, 'err');
+        toast(e.message, 'err', 4000);
+      });
+    return true;
+  };
+
+  let down = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+  let lastX = 0;
+  let lastY = 0;
+  let acc = 0;
+
+  const step = (n) => {
+    angles[sk] = (angles[sk] ?? 0) + 15 * n;
+    el.querySelector('.kf-dial')?.style.setProperty('--angle', `${angles[sk]}deg`);
+    if (nativeApp) nativeApp.haptic();
+    pendingDelta += n;
+    flush();
+  };
+
+  const levelAt = (e) => {
+    const track = el.querySelector('.kf-track')?.getBoundingClientRect() ?? el.getBoundingClientRect();
+    const vertical = cell.h >= cell.w;
+    return clamp(vertical ? 1 - (e.clientY - track.top) / track.height : (e.clientX - track.left) / track.width, 0, 1);
+  };
+  const setLevel = (level) => {
+    state.levels[sk] = level;
+    const face = el.querySelector('.keyface');
+    face?.style.setProperty('--level', level);
+    const v = face?.querySelector('.kf-value');
+    if (v) v.textContent = `${Math.round(level * 100)} %`;
+    pendingLevel = level;
+    flush();
+  };
+
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add('active');
+    down = true;
+    moved = false;
+    startX = lastX = e.clientX;
+    startY = lastY = e.clientY;
+    acc = 0;
+    if (!isDial) dragging.add(sk);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!down) return;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) moved = true;
+    if (isDial) {
+      // Glisser vers la droite ou vers le haut = « + » ; vers la gauche ou le bas = « − ».
+      acc += e.clientX - lastX - (e.clientY - lastY);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const sens = DIAL_SENSITIVITY[key.action.sensitivity] ?? DIAL_SENSITIVITY.normal;
+      let n = 0;
+      while (acc >= sens) {
+        acc -= sens;
+        n++;
+      }
+      while (acc <= -sens) {
+        acc += sens;
+        n--;
+      }
+      if (n) step(n);
+    } else if (moved) {
+      setLevel(levelAt(e));
+    }
+  });
+  const end = (e) => {
+    if (!down) return;
+    down = false;
+    el.classList.remove('active');
+    dragging.delete(sk);
+    if (moved || e.type === 'pointercancel') return;
+    // Appui sans glisser : action « appui » (valider), sinon le curseur saute à la position touchée.
+    if (!tap() && !isDial) setLevel(levelAt(e));
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Molette de la souris (Deck ouvert sur un ordinateur).
+  el.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      if (isDial) step(dir);
+      else setLevel(clamp((state.levels[sk] ?? 0) + dir * 0.05, 0, 1));
+    },
+    { passive: false },
+  );
+  el.repaint = repaint;
+  return el;
+}
+
+// Mise à jour d'une touche continue quand le serveur annonce une valeur ou une position.
+function refreshControl(sk) {
+  const [profileId, pageId, index] = sk.split('/');
+  if (profileId !== profile().id || pageId !== page().id || dragging.has(sk)) return;
+  document.querySelector(`.dkey[data-index="${index}"]`)?.repaint?.();
 }
 
 async function resync(el, pageId, index) {
@@ -191,6 +385,21 @@ $('fsBtn').addEventListener('click', () => {
 document.addEventListener('pointerdown', keepAwake, { once: true });
 document.addEventListener('visibilitychange', keepAwake);
 
+// Rotation de l'écran ou redimensionnement : on réadapte la grille (coins, espacement,
+// orientation). Pas de nouveau rendu complet si la disposition ne change pas.
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!state.config) return;
+    const view = displayLayout();
+    if (view.key !== lastLayoutKey) return render();
+    const grid = $('deckGrid');
+    grid.style.setProperty('--gap', `${view.gap}px`);
+    grid.style.setProperty('--key-radius', `${view.radius}px`);
+  }, 120);
+});
+
 // Navigation au clavier / à la molette quand le Deck est ouvert sur un ordinateur.
 document.addEventListener('keydown', (e) => {
   if (!state.config) return;
@@ -207,9 +416,11 @@ function setConnected(on) {
 }
 
 async function load() {
-  const [{ config, states }, status] = await Promise.all([api.getConfig(), api.status()]);
+  const [{ config, states, levels, values }, status] = await Promise.all([api.getConfig(), api.status()]);
   state.layouts = status.layouts;
   state.toggles = states ?? {};
+  state.levels = levels ?? {};
+  state.values = values ?? {};
   applyConfig(config);
 }
 
@@ -226,6 +437,15 @@ async function init() {
     error: () => setConnected(false),
     hello: () => load().catch(() => {}),
     config: ({ config }) => applyConfig(config),
+    value: ({ key, value }) => {
+      state.values[key] = value;
+      refreshControl(key);
+    },
+    level: ({ key, level, origin }) => {
+      if (origin === clientId) return; // notre propre geste, déjà affiché
+      state.levels[key] = level;
+      refreshControl(key);
+    },
     state: ({ key, state: value }) => {
       if (value) state.toggles[key] = 1;
       else delete state.toggles[key];
