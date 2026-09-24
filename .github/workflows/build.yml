@@ -111,7 +111,8 @@ jobs:
         shell: bash
         run: |
           ASAR=$(ls dist/*-unpacked/resources/app.asar)
-          npx --yes @electron/asar list "$ASAR" > asar.txt
+          # Sous Windows, la liste utilise des « \ » : on normalise les séparateurs.
+          npx --yes @electron/asar list "$ASAR" | tr '\\' '/' > asar.txt
           grep -q "node_modules/node-simconnect/dist/index.js" asar.txt
           grep -q "public/icons/avia/gear-down.svg" asar.txt
           echo "node-simconnect et icônes aviation présents dans $ASAR"
