@@ -88,3 +88,15 @@ test('serveur : appui sur une bascule, resynchronisation, persistance', async ()
   assert.equal(Object.values(saved)[0], 1);
   await fs.rm(dataDir, { recursive: true, force: true });
 });
+
+test('orientation : la grille est transposée en portrait', async () => {
+  const { fitGrid, orientCell } = await import('../shared/layout.js');
+  // Tablette en paysage : 3×5 conservé
+  assert.deepEqual(fitGrid(3, 5, 1280, 760), { rows: 3, cols: 5, transposed: false });
+  // Téléphone en portrait : 3×5 affiché en 5×3
+  assert.deepEqual(fitGrid(3, 5, 380, 780), { rows: 5, cols: 3, transposed: true });
+  // Grille carrée : jamais transposée
+  assert.equal(fitGrid(4, 4, 380, 780).transposed, false);
+  // Touche fusionnée 2×1 en ligne 2, colonne 1 → 1×2 en ligne 1, colonne 2
+  assert.deepEqual(orientCell({ index: 6, row: 1, col: 0, w: 2, h: 1 }, true), { index: 6, row: 0, col: 1, w: 1, h: 2 });
+});

@@ -54,6 +54,10 @@ publication sont créées automatiquement.
    droite du Deck (ou la touche Retour) permet de changer de PC.
 
 L'écran reste allumé et s'affiche en plein écran ; les touches vibrent légèrement.
+Les touches occupent **tout l'écran**, en portrait comme en paysage : en portrait,
+une grille pensée pour le paysage (ex. 3×5) s'affiche en 5×3 (lignes et colonnes
+inversées, touches fusionnées comprises) pour garder des touches presque carrées ;
+icônes et titres s'agrandissent ou rétrécissent avec les touches.
 
 Sur **Android 7 à 9**, l'affichage du Deck repose sur **Google Chrome** (et sur
 **Android System WebView** à partir d'Android 10) : mettez-le à jour depuis le Play

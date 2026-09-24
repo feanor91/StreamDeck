@@ -1,7 +1,7 @@
 import { api, subscribe } from './api.js';
 import { h, toast } from './dom.js';
 import { keyFace } from './catalog.js';
-import { computeCells, stateKey } from '/shared/layout.js';
+import { computeCells, stateKey, fitGrid, orientCell } from '/shared/layout.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -39,15 +39,37 @@ function goToPage(id, direction = 0) {
   render(direction || (to > idx ? 1 : -1));
 }
 
+// Disposition affichée : la grille remplit tout l'écran ; en portrait, une grille
+// pensée pour le paysage (ex. 3×5) est transposée (5×3) pour garder des touches
+// proches du carré. Retourne aussi le rayon des coins adapté à la taille des touches.
+function displayLayout() {
+  const { rows, cols } = layout();
+  const stage = $('stage');
+  const style = getComputedStyle(stage);
+  const w = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const hgt = stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  const fit = fitGrid(rows, cols, w, hgt);
+  const gap = Math.max(6, Math.min(16, Math.min(w, hgt) * 0.018));
+  const cellW = (w - (fit.cols - 1) * gap) / fit.cols;
+  const cellH = (hgt - (fit.rows - 1) * gap) / fit.rows;
+  return { ...fit, gap, radius: Math.max(8, Math.min(cellW, cellH) * 0.14), key: `${fit.rows}x${fit.cols}` };
+}
+
+let lastLayoutKey = '';
+
 function render(direction = 0) {
   const { rows, cols } = layout();
+  const view = displayLayout();
+  lastLayoutKey = view.key;
   const grid = $('deckGrid');
-  grid.style.setProperty('--cols', cols);
-  grid.style.setProperty('--rows', rows);
+  grid.style.setProperty('--cols', view.cols);
+  grid.style.setProperty('--rows', view.rows);
+  grid.style.setProperty('--gap', `${view.gap}px`);
+  grid.style.setProperty('--key-radius', `${view.radius}px`);
 
   const pg = page();
   const { cells } = computeCells(pg.keys, rows, cols);
-  grid.replaceChildren(...cells.map((cell) => buildKey(pg, cell)));
+  grid.replaceChildren(...cells.map((cell) => buildKey(pg, orientCell(cell, view.transposed))));
 
   grid.classList.remove('slide-left', 'slide-right');
   if (direction) {
@@ -190,6 +212,21 @@ $('fsBtn').addEventListener('click', () => {
 });
 document.addEventListener('pointerdown', keepAwake, { once: true });
 document.addEventListener('visibilitychange', keepAwake);
+
+// Rotation de l'écran ou redimensionnement : on réadapte la grille (coins, espacement,
+// orientation). Pas de nouveau rendu complet si la disposition ne change pas.
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!state.config) return;
+    const view = displayLayout();
+    if (view.key !== lastLayoutKey) return render();
+    const grid = $('deckGrid');
+    grid.style.setProperty('--gap', `${view.gap}px`);
+    grid.style.setProperty('--key-radius', `${view.radius}px`);
+  }, 120);
+});
 
 // Navigation au clavier / à la molette quand le Deck est ouvert sur un ordinateur.
 document.addEventListener('keydown', (e) => {
