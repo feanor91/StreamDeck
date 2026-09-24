@@ -137,8 +137,46 @@ pushback…) avec leurs icônes. L'action « Commande MSFS » donne accès à un
 cinquantaine de commandes, ou à n'importe quel événement SimConnect par son nom.
 L'onglet *Aviation* du choix d'icône propose 36 icônes dédiées.
 
-> Certains avions très détaillés (Fenix, PMDG, FlyByWire…) ont leurs propres
-> systèmes et ignorent une partie des commandes standard ; pour eux, utilisez des
+#### Trois façons d'agir sur le simulateur
+
+L'action « Commande MSFS » propose trois modes :
+
+| Mode | Pour quoi | Exemple |
+| --- | --- | --- |
+| **Commande** | Événements standard ou personnalisés d'un avion | `GEAR_TOGGLE`, `A32NX.FCU_HDG_PUSH` |
+| **Variable** | Écrire une SimVar ou une variable locale `L:` d'un avion | `L:…` : fixer, basculer 0 ↔ 1, ajouter un pas |
+| **Input Event** | Commandes de cockpit de MSFS 2024 (avion chargé) | `LIGHTING_LANDING_1` : fixer, basculer, ajouter |
+
+L'état d'une bascule, la valeur affichée par un bouton rotatif et la position d'un
+curseur peuvent de même être lus dans une SimVar, une variable `L:` ou un Input
+Event. Pour une bascule, l'option « État 2 si la valeur vaut… » permet par
+exemple d'allumer une touche seulement quand l'auto-freinage est sur MED.
+
+#### Explorateur MSFS
+
+Cliquez sur l'indicateur **MSFS** en haut de l'écran de configuration :
+l'explorateur liste les commandes de cockpit (Input Events) **de l'avion
+chargé**, avec une recherche et la lecture de leur valeur actuelle. Actionnez un
+interrupteur dans le cockpit puis relisez pour repérer la bonne commande. Il lit
+aussi n'importe quelle variable (`L:` ou SimVar) et exporte la liste des
+commandes. C'est l'outil pour configurer un avion non documenté (ex. le Rafale
+d'AzurPoly).
+
+#### Airbus A320neo FlyByWire
+
+Catégorie *A320 FlyByWire*, construite à partir de la documentation officielle
+FlyByWire, sans module supplémentaire :
+
+- boutons **SPD, HDG, ALT, V/S** et **BARO** : tourner = régler, **appui =
+  enfoncer (managé)**, **appui long = tirer (sélecté)** ; la touche affiche la
+  valeur du FCU, les tirets « --- » et le point du mode managé ;
+- **AP1, AP2, A/THR, LOC, APPR, EXPED, FD, LS** avec leur voyant ;
+- pas d'altitude 100 / 1000, HDG-V/S / TRK-FPA, SPD / MACH ;
+- **auto-freinage LO / MED / MAX** (la touche du mode armé s'allume).
+
+> Certains avions très détaillés ont leurs propres systèmes et ignorent une partie
+> des commandes standard : utilisez alors leurs commandes personnalisées, leurs
+> variables `L:` ou leurs Input Events (voir l'explorateur), ou à défaut des
 > raccourcis clavier (catégorie *Simulation (raccourcis clavier)*).
 
 La liaison utilise la bibliothèque [node-simconnect](https://github.com/EvenAR/node-simconnect)
@@ -261,6 +299,7 @@ desktop/              Application PC (Electron) : fenêtre, zone de notification
 android/              Application Android (Kotlin) : connexion, découverte, Deck plein écran
 scripts/smoke.mjs     Test de fumée utilisé par l'intégration continue
 scripts/fake-msfs-server.mjs  Serveur relié à un faux simulateur (développement)
+test/fake-simconnect.js       Faux SimConnect (tests et développement)
 .github/workflows/    Compilation et publication (APK, installateurs)
 test/                 Tests unitaires
 ## Tests

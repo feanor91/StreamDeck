@@ -9,14 +9,28 @@ export const MAX_STEPS = 40;
 /** Pixels de glissement par cran selon la sensibilité choisie. */
 export const DIAL_SENSITIVITY = { fine: 28, normal: 16, fast: 8 };
 
-/** Mise en forme d'une valeur affichée sur une touche (ex. 275 → « 275° »). */
-export function formatDisplay(value, display = {}) {
+/**
+ * Mise en forme d'une valeur affichée sur une touche (ex. 275 → « 275° »).
+ * Options de `display` : decimals, suffix, scale, wrap360 (cap 1 à 360),
+ * pad (zéros devant, ex. « 045 »), sign (« +1500 »), machAuto (0,78 si < 1).
+ * `flags` (afficheurs type FCU) : dashes → « --- », managed → point « • », std → « STD ».
+ */
+export function formatDisplay(value, display = {}, flags = null) {
+  if (flags?.std) return 'STD';
+  if (flags?.dashes) return `---${flags?.managed ? '•' : ''}`;
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
-  const decimals = clamp(Number(display.decimals) || 0, 0, 3);
   let v = Number(value) * (Number(display.scale) || 1);
+  let decimals = clamp(Number(display.decimals) || 0, 0, 3);
+  if (display.machAuto && Math.abs(v) > 0 && Math.abs(v) < 1) decimals = 2;
   if (display.wrap360) v = ((Math.round(v) % 360) + 360) % 360 || 360;
-  const text = v.toLocaleString('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: Math.abs(v) >= 10000 });
-  return `${text}${display.suffix ?? ''}`;
+  let text = Math.abs(v).toLocaleString('fr-FR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: !display.pad && Math.abs(v) >= 10000,
+  });
+  if (display.pad && !decimals) text = text.padStart(Number(display.pad), '0');
+  const sign = v < 0 ? '−' : display.sign && v > 0 ? '+' : '';
+  return `${sign}${text}${display.suffix ?? ''}${flags?.managed ? '•' : ''}`;
 }
 
 /** Position 0..1 d'un curseur → valeur envoyée (ex. 0..16383 pour THROTTLE_SET). */

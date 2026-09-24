@@ -1,7 +1,7 @@
 import { formatHotkey, MEDIA_ACTIONS } from '/shared/keys.js';
 import { h } from './dom.js';
 import { faceFor } from '/shared/layout.js';
-import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS } from '/shared/msfs.js';
+import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS, FBW_PRESETS } from '/shared/msfs.js';
 import { formatDisplay } from '/shared/controls.js';
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -90,7 +90,12 @@ export const ACTION_TYPES = {
     color: '#0ea5e9',
     create: () => ({ type: 'msfs', event: '', value: 0 }),
     face: { icon: '/public/icons/avia/plane.svg', color: '#0c4a6e' },
-    summary: (a) => (a.event ? MSFS_EVENT_LABELS[a.event] ?? a.event : 'Aucune commande choisie'),
+    summary: (a) => {
+      const ops = { set: 'fixer à', toggle: 'basculer', add: 'ajouter' };
+      if (a.kind === 'var') return a.var ? `${a.var} : ${ops[a.op ?? 'set']} ${a.op === 'toggle' ? '' : a.value ?? 0}`.trim() : 'Aucune variable choisie';
+      if (a.kind === 'input') return a.input ? `${a.input} : ${ops[a.op ?? 'set']} ${a.op === 'toggle' ? '' : a.value ?? 0}`.trim() : 'Aucune commande de cockpit choisie';
+      return a.event ? MSFS_EVENT_LABELS[a.event] ?? a.event : 'Aucune commande choisie';
+    },
   },
   dial: {
     label: 'Rotatif',
@@ -214,6 +219,10 @@ export const LIBRARY = [
     items: [{ type: 'msfs' }, ...MSFS_PRESETS, ...MSFS_DIAL_PRESETS, ...MSFS_SLIDER_PRESETS],
   },
   {
+    group: 'A320 FlyByWire',
+    items: FBW_PRESETS,
+  },
+  {
     group: 'Simulation (raccourcis clavier)',
     items: [
       {
@@ -271,7 +280,7 @@ export function libraryItemInfo(item) {
     return {
       label: item.label,
       desc: { toggle: 'MSFS · état synchronisé', dial: 'MSFS · bouton rotatif', slider: 'MSFS · curseur' }[item.action.type] ?? 'MSFS · commande',
-      icon: item.face.icon,
+      icon: item.face.icon ?? ACTION_TYPES[item.action.type]?.icon,
       color: '#0ea5e9',
     };
   }
@@ -333,8 +342,13 @@ function dialFace(key, live) {
     html: `<svg viewBox="0 0 100 100"><g class="ticks">${ticks}</g><circle class="knob" cx="50" cy="50" r="33"/><g class="needle"><line x1="50" y1="22" x2="50" y2="30"/></g></svg>`,
   });
   dial.style.setProperty('--angle', `${live.angle ?? 0}deg`);
-  const hasValue = !!key.action?.display?.simvar;
-  const center = h('span', { class: 'kf-dial-center' }, hasValue ? h('span', { class: 'kf-value' }, formatDisplay(live.value, key.action.display)) : iconNode(key.icon, 'kf-dial-icon'));
+  const d = key.action?.display;
+  const hasValue = !!(d?.simvar || d?.input);
+  const center = h(
+    'span',
+    { class: 'kf-dial-center' },
+    hasValue ? h('span', { class: 'kf-value' }, formatDisplay(live.value, d, live.flags)) : iconNode(key.icon, 'kf-dial-icon') ?? h('span', { class: 'kf-value' }, key.title ?? ''),
+  );
   dial.append(center);
   el.append(dial);
   if (key.showTitle !== false && key.title) el.append(h('span', { class: 'kf-title' }, key.title));

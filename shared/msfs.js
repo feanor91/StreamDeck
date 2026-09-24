@@ -120,7 +120,26 @@ export const MSFS_SIMVARS = [
 ];
 
 export const isValidEventName = (name) => /^[A-Z0-9_.#-]{2,64}$/.test(String(name || ''));
-export const isValidSimvar = (name) => /^[A-Z0-9 _]{2,64}(:\d{1,2})?$/.test(String(name || ''));
+
+// Variables : SimVars standard (« GEAR HANDLE POSITION », « NAV OBS:1 ») ou variables
+// locales propres à un avion, préfixées « L: » (ex. « L:A32NX_FCU_AP_1_LIGHT_ON »).
+export const isLocalVar = (name) => /^L:/i.test(String(name || '').trim());
+export const isValidSimvar = (name) => {
+  const v = String(name || '').trim();
+  return isLocalVar(v) ? /^L:[A-Za-z0-9_.:-]{1,96}$/.test(v) : /^[A-Z0-9 _]{2,64}(:\d{1,2})?$/.test(v);
+};
+/** Forme canonique : les SimVars standard en majuscules, les variables L: telles quelles. */
+export const normalizeVar = (name) => {
+  const v = String(name || '').trim();
+  return isLocalVar(v) ? `L:${v.slice(2)}` : v.toUpperCase();
+};
+/** Unité par défaut : « number » pour une variable L:, « Bool » pour un état on/off standard. */
+export const defaultUnit = (name, onOff = true) => (isLocalVar(name) ? 'number' : onOff ? 'Bool' : 'number');
+
+export const MSFS_UNITS = ['number', 'Bool', 'percent', 'degrees', 'feet', 'knots', 'feet per minute', 'millibars', 'mach', 'position', 'enum'];
+
+// Noms d'Input Events (MSFS 2024) : lettres, chiffres, « _ », « . », « : ».
+export const isValidInputEvent = (name) => /^[A-Za-z0-9_.:#-]{2,128}$/.test(String(name || ''));
 
 const I = (name) => `/public/icons/avia/${name}.svg`;
 const toggle = (event, simvar) => ({ type: 'toggle', same: true, sync: { simvar }, actions: [{ type: 'msfs', event }] });
@@ -272,3 +291,113 @@ export const MSFS_SLIDER_PRESETS = [
   sliderPreset('Mélange', 'MIXTURE_SET', 'GENERAL ENG MIXTURE LEVER POSITION:1', 'Mélange', 'fuel'),
   sliderPreset('Pas d’hélice', 'PROP_PITCH_SET', 'GENERAL ENG PROPELLER LEVER POSITION:1', 'Hélice', 'engine'),
 ];
+
+// ---------------------------------------------------------------------------
+// Airbus A320neo FlyByWire (A32NX)
+// Source : documentation officielle FlyByWire (a320-events.md, a320-simvars.md).
+// Les commandes du FCU sont des événements personnalisés « A32NX.* » transmis par
+// SimConnect ; les voyants et afficheurs sont des variables locales « L:A32NX_* ».
+// ---------------------------------------------------------------------------
+export const FBW_EVENTS = [
+  { group: 'A320 FlyByWire — FCU', items: [
+    ['A32NX.FCU_AP_1_PUSH', 'AP1'], ['A32NX.FCU_AP_2_PUSH', 'AP2'], ['A32NX.FCU_ATHR_PUSH', 'A/THR'],
+    ['A32NX.FCU_AP_DISCONNECT_PUSH', 'Déconnexion AP (manche)'], ['A32NX.FCU_ATHR_DISCONNECT_PUSH', 'Déconnexion A/THR (manettes)'],
+    ['A32NX.FCU_LOC_PUSH', 'LOC'], ['A32NX.FCU_APPR_PUSH', 'APPR'], ['A32NX.FCU_EXPED_PUSH', 'EXPED'],
+    ['A32NX.FCU_SPD_INC', 'SPD +'], ['A32NX.FCU_SPD_DEC', 'SPD −'], ['A32NX.FCU_SPD_PUSH', 'SPD : enfoncer (managé)'], ['A32NX.FCU_SPD_PULL', 'SPD : tirer (sélecté)'],
+    ['A32NX.FCU_SPD_MACH_TOGGLE_PUSH', 'SPD / MACH'],
+    ['A32NX.FCU_HDG_INC', 'HDG +'], ['A32NX.FCU_HDG_DEC', 'HDG −'], ['A32NX.FCU_HDG_PUSH', 'HDG : enfoncer (managé)'], ['A32NX.FCU_HDG_PULL', 'HDG : tirer (sélecté)'],
+    ['A32NX.FCU_TRK_FPA_TOGGLE_PUSH', 'HDG-V/S / TRK-FPA'],
+    ['A32NX.FCU_ALT_INC', 'ALT +'], ['A32NX.FCU_ALT_DEC', 'ALT −'], ['A32NX.FCU_ALT_PUSH', 'ALT : enfoncer (managé)'], ['A32NX.FCU_ALT_PULL', 'ALT : tirer (sélecté)'],
+    ['A32NX.FCU_ALT_INCREMENT_TOGGLE', 'ALT : pas 100 / 1000'],
+    ['A32NX.FCU_VS_INC', 'V/S +'], ['A32NX.FCU_VS_DEC', 'V/S −'], ['A32NX.FCU_VS_PUSH', 'V/S : enfoncer (niveler)'], ['A32NX.FCU_VS_PULL', 'V/S : tirer (sélecté)'],
+    ['A32NX.FMGC_DIR_TO_TRIGGER', 'DIR TO (mode NAV)'],
+  ] },
+  { group: 'A320 FlyByWire — EFIS', items: [
+    ['A32NX.FCU_EFIS_L_FD_PUSH', 'FD (commandant)'], ['A32NX.FCU_EFIS_L_LS_PUSH', 'LS (commandant)'],
+    ['A32NX.FCU_EFIS_L_BARO_INC', 'BARO +'], ['A32NX.FCU_EFIS_L_BARO_DEC', 'BARO −'],
+    ['A32NX.FCU_EFIS_L_BARO_PUSH', 'BARO : enfoncer'], ['A32NX.FCU_EFIS_L_BARO_PULL', 'BARO : tirer (STD)'],
+    ['A32NX.FCU_EFIS_L_CSTR_PUSH', 'CSTR'], ['A32NX.FCU_EFIS_L_WPT_PUSH', 'WPT'], ['A32NX.FCU_EFIS_L_VORD_PUSH', 'VOR.D'],
+    ['A32NX.FCU_EFIS_L_NDB_PUSH', 'NDB'], ['A32NX.FCU_EFIS_L_ARPT_PUSH', 'ARPT'], ['A32NX.EFIS_L_CHRONO_PUSHED', 'CHRONO'],
+  ] },
+  { group: 'A320 FlyByWire — Auto-freinage', items: [
+    ['A32NX.AUTOBRAKE_BUTTON_LO', 'Auto-freinage LO'], ['A32NX.AUTOBRAKE_BUTTON_MED', 'Auto-freinage MED'],
+    ['A32NX.AUTOBRAKE_BUTTON_MAX', 'Auto-freinage MAX'], ['A32NX.AUTOBRAKE_SET_DISARM', 'Auto-freinage désarmé'],
+  ] },
+];
+for (const g of FBW_EVENTS) for (const [id, label] of g.items) MSFS_EVENT_LABELS[id] = `A320 — ${label}`;
+
+const FBW = '#1f2a37';
+const ON_GREEN = '#15803d';
+const fbwLight = (label, event, lightVar, title, { onColor = ON_GREEN, equals } = {}) => ({
+  label,
+  action: { type: 'toggle', same: true, sync: { simvar: lightVar, ...(equals !== undefined ? { equals } : {}) }, actions: [{ type: 'msfs', event }] },
+  face: { title: '', icon: null, color: FBW, titleOnly: title },
+  alt: { color: onColor },
+});
+// Bouton du FCU : tourner = + / −, appui = enfoncer (managé), appui long = tirer (sélecté).
+const fbwKnob = (label, name, title, display) => ({
+  label,
+  action: {
+    type: 'dial',
+    sensitivity: 'normal',
+    inc: { type: 'msfs', event: `A32NX.FCU_${name}_INC` },
+    dec: { type: 'msfs', event: `A32NX.FCU_${name}_DEC` },
+    press: { type: 'msfs', event: `A32NX.FCU_${name}_PUSH` },
+    hold: { type: 'msfs', event: `A32NX.FCU_${name}_PULL` },
+    display,
+  },
+  face: { title, icon: null, color: '#161b24' },
+});
+
+export const FBW_PRESETS = [
+  fbwKnob('FCU : bouton SPD', 'SPD', 'SPD', {
+    simvar: 'L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE', unit: 'number', decimals: 0, machAuto: true,
+    dashes: 'L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_DASHES', managed: 'L:A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED',
+  }),
+  fbwKnob('FCU : bouton HDG', 'HDG', 'HDG', {
+    simvar: 'L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE', unit: 'number', decimals: 0, pad: 3,
+    dashes: 'L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_DASHES', managed: 'L:A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED',
+  }),
+  fbwKnob('FCU : bouton ALT', 'ALT', 'ALT', {
+    simvar: 'L:A32NX_FCU_AFS_DISPLAY_ALT_VALUE', unit: 'number', decimals: 0, pad: 5,
+    managed: 'L:A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED',
+  }),
+  fbwKnob('FCU : molette V/S', 'VS', 'V/S', {
+    simvar: 'L:A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE', unit: 'number', decimals: 0, sign: true,
+    dashes: 'L:A32NX_FCU_AFS_DISPLAY_VS_FPA_DASHES',
+  }),
+  {
+    label: 'EFIS : bouton BARO',
+    action: {
+      type: 'dial',
+      sensitivity: 'normal',
+      inc: { type: 'msfs', event: 'A32NX.FCU_EFIS_L_BARO_INC' },
+      dec: { type: 'msfs', event: 'A32NX.FCU_EFIS_L_BARO_DEC' },
+      press: { type: 'msfs', event: 'A32NX.FCU_EFIS_L_BARO_PUSH' },
+      hold: { type: 'msfs', event: 'A32NX.FCU_EFIS_L_BARO_PULL' },
+      display: { simvar: 'L:A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE', unit: 'number', decimals: 0, stdVar: 'L:A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE' },
+    },
+    face: { title: 'BARO', icon: null, color: '#161b24' },
+  },
+  fbwLight('FCU : AP1', 'A32NX.FCU_AP_1_PUSH', 'L:A32NX_FCU_AP_1_LIGHT_ON', 'AP1'),
+  fbwLight('FCU : AP2', 'A32NX.FCU_AP_2_PUSH', 'L:A32NX_FCU_AP_2_LIGHT_ON', 'AP2'),
+  fbwLight('FCU : A/THR', 'A32NX.FCU_ATHR_PUSH', 'L:A32NX_FCU_ATHR_LIGHT_ON', 'A/THR'),
+  fbwLight('FCU : LOC', 'A32NX.FCU_LOC_PUSH', 'L:A32NX_FCU_LOC_LIGHT_ON', 'LOC'),
+  fbwLight('FCU : APPR', 'A32NX.FCU_APPR_PUSH', 'L:A32NX_FCU_APPR_LIGHT_ON', 'APPR'),
+  fbwLight('FCU : EXPED', 'A32NX.FCU_EXPED_PUSH', 'L:A32NX_FCU_EXPED_LIGHT_ON', 'EXPED'),
+  fbwLight('EFIS : FD', 'A32NX.FCU_EFIS_L_FD_PUSH', 'L:A32NX_FCU_EFIS_L_FD_LIGHT_ON', 'FD'),
+  fbwLight('EFIS : LS', 'A32NX.FCU_EFIS_L_LS_PUSH', 'L:A32NX_FCU_EFIS_L_LS_LIGHT_ON', 'LS'),
+  fbwLight('FCU : pas ALT 100 / 1000', 'A32NX.FCU_ALT_INCREMENT_TOGGLE', 'L:A32NX_FCU_ALT_INCREMENT_1000', 'ALT 1000', { onColor: '#0369a1' }),
+  fbwLight('FCU : HDG-V/S / TRK-FPA', 'A32NX.FCU_TRK_FPA_TOGGLE_PUSH', 'L:A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE', 'TRK FPA', { onColor: '#0369a1' }),
+  fbwLight('FCU : SPD / MACH', 'A32NX.FCU_SPD_MACH_TOGGLE_PUSH', 'L:A32NX_FCU_AFS_DISPLAY_MACH_MODE', 'MACH', { onColor: '#0369a1' }),
+  fbwLight('Auto-freinage LO', 'A32NX.AUTOBRAKE_BUTTON_LO', 'L:A32NX_AUTOBRAKES_ARMED_MODE', 'LO', { equals: 1 }),
+  fbwLight('Auto-freinage MED', 'A32NX.AUTOBRAKE_BUTTON_MED', 'L:A32NX_AUTOBRAKES_ARMED_MODE', 'MED', { equals: 2 }),
+  fbwLight('Auto-freinage MAX', 'A32NX.AUTOBRAKE_BUTTON_MAX', 'L:A32NX_AUTOBRAKES_ARMED_MODE', 'MAX', { equals: 3 }),
+];
+// Les boutons à voyant affichent leur nom en grand, sans icône.
+for (const p of FBW_PRESETS) {
+  if (p.face.titleOnly) {
+    p.face = { title: p.face.titleOnly, icon: null, color: p.face.color };
+    p.alt = { ...p.alt, title: p.face.title };
+  }
+}

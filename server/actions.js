@@ -32,6 +32,39 @@ async function focusTarget(executor, target) {
   await sleep(Number(target.delay ?? 120));
 }
 
+/**
+ * Opération sur une valeur du simulateur (variable ou Input Event) :
+ *  - « set »    : fixe la valeur ;
+ *  - « toggle » : alterne entre `value` (1 par défaut) et `off` (0 par défaut) ;
+ *  - « add »    : ajoute `value` (pas, négatif possible), borné par min / max,
+ *                 ou bouclé si `wrap` (ex. un cap de 0 à 360).
+ */
+export async function applyOperation(action, read, write) {
+  const op = action.op ?? 'set';
+  const value = Number(action.value ?? (op === 'set' ? 0 : 1));
+  if (op === 'set') return write(value);
+  const current = Number(await read()) || 0;
+  if (op === 'toggle') {
+    const off = Number(action.off ?? 0);
+    const on = Number(action.value ?? 1);
+    return write(Math.abs(current - on) < 1e-6 ? off : on);
+  }
+  if (op === 'add') {
+    let next = current + value;
+    const min = action.min === undefined || action.min === '' ? null : Number(action.min);
+    const max = action.max === undefined || action.max === '' ? null : Number(action.max);
+    if (action.wrap && min !== null && max !== null && max > min) {
+      const span = max - min;
+      next = ((((next - min) % span) + span) % span) + min;
+    } else {
+      if (min !== null) next = Math.max(min, next);
+      if (max !== null) next = Math.min(max, next);
+    }
+    return write(next);
+  }
+  throw new Error(`Opération inconnue : ${op}`);
+}
+
 // `ctx.msfs` : liaison SimConnect (actions « msfs »).
 export async function runAction(executor, action, depth = 0, ctx = {}) {
   if (!action || !action.type) throw new Error('Aucune action configurée sur cette touche.');
@@ -93,10 +126,21 @@ export async function runAction(executor, action, depth = 0, ctx = {}) {
     case 'slider':
       if (action.press?.type) return runAction(executor, action.press, depth + 1, ctx);
       throw new Error('Un curseur se teste depuis le Deck (glisser le curseur).');
-    case 'msfs':
-      if (!action.event) throw new Error('Aucun événement MSFS choisi.');
+    case 'msfs': {
       if (!ctx.msfs) throw new Error('Liaison MSFS indisponible.');
+      const kind = action.kind ?? 'event';
+      if (kind === 'var') {
+        if (!action.var) throw new Error('Aucune variable MSFS choisie.');
+        const unit = action.unit || 'number';
+        return applyOperation(action, () => ctx.msfs.readVar(action.var, unit), (v) => ctx.msfs.setVar(action.var, unit, v));
+      }
+      if (kind === 'input') {
+        if (!action.input) throw new Error('Aucune commande de cockpit (Input Event) choisie.');
+        return applyOperation(action, () => ctx.msfs.readInput(action.input), (v) => ctx.msfs.setInput(action.input, v));
+      }
+      if (!action.event) throw new Error('Aucun événement MSFS choisi.');
       return ctx.msfs.send(action.event, action.value);
+    }
     case 'page':
       return; // navigation gérée par le client
     default:
