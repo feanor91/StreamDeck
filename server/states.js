@@ -31,8 +31,26 @@ export class ToggleStates {
     return this.get(key);
   }
 
+  /** Position 0..1 d'un curseur (null si jamais réglé). */
+  getLevel(key) {
+    const v = this.values[`lvl:${key}`];
+    return typeof v === 'number' ? v : null;
+  }
+
+  setLevel(key, level) {
+    this.values[`lvl:${key}`] = Math.round(Math.min(1, Math.max(0, Number(level) || 0)) * 10000) / 10000;
+    this.scheduleSave();
+    return this.values[`lvl:${key}`];
+  }
+
+  /** États des bascules uniquement (clé → 1). */
   all() {
-    return { ...this.values };
+    return Object.fromEntries(Object.entries(this.values).filter(([k]) => !k.startsWith('lvl:')));
+  }
+
+  /** Positions des curseurs (clé → 0..1). */
+  levels() {
+    return Object.fromEntries(Object.entries(this.values).filter(([k]) => k.startsWith('lvl:')).map(([k, v]) => [k.slice(4), v]));
   }
 
   scheduleSave() {

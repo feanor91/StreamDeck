@@ -551,3 +551,166 @@ select optgroup {
     transition: none !important;
   }
 }
+
+/* ---------- Bouton rotatif ---------- */
+.keyface.kf-dial-key {
+  display: block;
+}
+.kf-dial {
+  --angle: 0deg;
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 76cqmin;
+  height: 76cqmin;
+  transform: translate(-50%, -50%);
+}
+.keyface.no-title .kf-dial,
+.kf-dial-key:not(:has(.kf-title)) .kf-dial {
+  top: 50%;
+  width: 86cqmin;
+  height: 86cqmin;
+}
+.kf-dial svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.kf-dial .ticks line {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.kf-dial .knob {
+  fill: rgba(0, 0, 0, 0.28);
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1.2;
+}
+.kf-dial .needle {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  transform: rotate(var(--angle));
+  transition: transform 0.12s var(--ease);
+}
+.kf-dial .needle line {
+  stroke: var(--accent-2, #4ea1ff);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.kf-dial-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.kf-dial .kf-value {
+  font-size: 15cqmin;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+.kf-dial .kf-dial-icon {
+  font-size: 24cqmin;
+  line-height: 1;
+}
+.kf-dial img.kf-dial-icon {
+  width: 30cqmin;
+  height: 30cqmin;
+}
+
+/* ---------- Curseur ---------- */
+.keyface.kf-slider-key {
+  --level: 0;
+  display: block;
+}
+.kf-slider-head {
+  position: absolute;
+  top: 5%;
+  left: 7%;
+  right: 7%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.kf-slider-head .kf-slider-icon {
+  width: 17cqmin;
+  height: 17cqmin;
+  font-size: 15cqmin;
+  line-height: 1;
+}
+.kf-slider-head .kf-value {
+  font-size: max(9px, 11cqmin);
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.kf-track {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.kf-fill {
+  position: absolute;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #8b7bff, #4ea1ff);
+}
+.kf-thumb {
+  position: absolute;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+/* vertical : la piste occupe la hauteur utile, 0 en bas */
+.kf-slider-key.vertical .kf-track {
+  left: 50%;
+  top: 22%;
+  /* place pour la poignée et le titre, même sur une petite touche carrée */
+  bottom: max(24%, 32cqmin);
+  width: max(10px, 14cqmin);
+  transform: translateX(-50%);
+}
+.kf-slider-key.vertical .kf-fill {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--level) * 100%);
+}
+.kf-slider-key.vertical .kf-thumb {
+  left: 50%;
+  bottom: calc(var(--level) * 100%);
+  width: max(22px, 34cqmin);
+  height: max(8px, 9cqmin);
+  transform: translate(-50%, 50%);
+}
+/* horizontal : 0 à gauche */
+.kf-slider-key.horizontal .kf-track {
+  left: 9%;
+  right: 9%;
+  top: 50%;
+  height: max(10px, 14cqmin);
+  transform: translateY(-50%);
+}
+.kf-slider-key.horizontal .kf-fill {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--level) * 100%);
+}
+.kf-slider-key.horizontal .kf-thumb {
+  top: 50%;
+  left: calc(var(--level) * 100%);
+  width: max(8px, 9cqmin);
+  height: max(22px, 34cqmin);
+  transform: translate(-50%, -50%);
+}
+.kf-slider-key .kf-title {
+  bottom: 5%;
+}
+.kf-slider-key:not(:has(.kf-title)) .kf-track {
+  bottom: 10%;
+}

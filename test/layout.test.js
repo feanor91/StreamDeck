@@ -100,3 +100,17 @@ test('orientation : la grille est transposée en portrait', async () => {
   // Touche fusionnée 2×1 en ligne 2, colonne 1 → 1×2 en ligne 1, colonne 2
   assert.deepEqual(orientCell({ index: 6, row: 1, col: 0, w: 2, h: 1 }, true), { index: 6, row: 0, col: 1, w: 1, h: 2 });
 });
+
+test('contrôles continus : conversions et affichage', async () => {
+  const { formatDisplay, levelToValue, valueToLevel, notchDelta } = await import('../shared/controls.js');
+  assert.equal(formatDisplay(275.4, { suffix: '°', wrap360: true }), '275°');
+  assert.equal(formatDisplay(0, { suffix: '°', wrap360: true }), '360°');
+  assert.equal(formatDisplay(1013.25, { suffix: ' hPa' }), '1013 hPa');
+  assert.equal(formatDisplay(null), '—');
+  assert.equal(levelToValue(0), 0);
+  assert.equal(levelToValue(1), 16383);
+  assert.equal(levelToValue(0.5, -16383, 16383), 0);
+  assert.equal(valueToLevel(-50, -100, 100), 0.25);
+  assert.equal(notchDelta(0, 0.5, 10), 5);
+  assert.equal(notchDelta(0.8, 0.2, 10), -6);
+});

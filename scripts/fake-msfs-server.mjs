@@ -10,10 +10,10 @@ const defs = new Map();
 const sent = [];
 Object.assign(handle, {
   mapClientEventToSimEvent: (id, name) => defs.set(`event:${id}`, name),
-  transmitClientEvent: (obj, id) => {
+  transmitClientEvent: (obj, id, data) => {
     const name = defs.get(`event:${id}`);
-    sent.push(name);
-    console.log(`[faux MSFS] événement reçu : ${name}`);
+    sent.push(data ? `${name}=${data}` : name);
+    console.log(`[faux MSFS] événement reçu : ${name}${data ? ` (valeur ${data})` : ''}`);
   },
   addToDataDefinition: (id, name) => defs.set(name, id),
   requestDataOnSimObject: () => {},

@@ -46,6 +46,9 @@ export const MSFS_EVENTS = [
     ['AP_ALT_VAR_DEC', 'Altitude sélectée −'],
     ['AP_VS_VAR_INC', 'Vitesse verticale +'],
     ['AP_VS_VAR_DEC', 'Vitesse verticale −'],
+    ['AP_AIRSPEED_HOLD', 'Tenue de vitesse (SPD)'],
+    ['AP_SPD_VAR_INC', 'Vitesse sélectée +'],
+    ['AP_SPD_VAR_DEC', 'Vitesse sélectée −'],
   ] },
   { group: 'Systèmes', items: [
     ['TOGGLE_MASTER_BATTERY', 'Batterie principale'],
@@ -63,6 +66,18 @@ export const MSFS_EVENTS = [
     ['NAV1_RADIO_SWAP', 'NAV1 : permuter active / attente'],
     ['XPNDR_IDENT_ON', 'Transpondeur : IDENT'],
     ['BAROMETRIC', 'Altimètre : caler la pression locale'],
+    ['KOHLSMAN_INC', 'Altimètre : calage +'],
+    ['KOHLSMAN_DEC', 'Altimètre : calage −'],
+    ['VOR1_OBI_INC', 'Course VOR1 (CRS) +1°'],
+    ['VOR1_OBI_DEC', 'Course VOR1 (CRS) −1°'],
+  ] },
+  { group: 'Axes (curseurs)', items: [
+    ['THROTTLE_SET', 'Manette des gaz (tous moteurs)'],
+    ['FLAPS_SET', 'Volets (position)'],
+    ['SPOILERS_SET', 'Aérofreins (position)'],
+    ['MIXTURE_SET', 'Mélange (tous moteurs)'],
+    ['PROP_PITCH_SET', 'Pas d’hélice (tous moteurs)'],
+    ['ELEVATOR_TRIM_SET', 'Compensateur de profondeur (position)'],
   ] },
   { group: 'Simulation', items: [
     ['PAUSE_TOGGLE', 'Pause'],
@@ -186,4 +201,74 @@ export const AVIA_ICONS = [
   'ap', 'fd', 'hdg', 'alt', 'vs', 'nav', 'apr', 'athr', 'knob-left', 'knob-right',
   'battery', 'avionics', 'pitot-heat', 'seatbelt', 'engine', 'fuel',
   'radio', 'altimeter', 'pause', 'pushback', 'door', 'camera', 'plane',
+];
+
+// Variables numériques utilisables pour l'affichage d'une valeur sur une touche
+// ou la position d'un curseur : [variable, unité, libellé, suffixe, décimales].
+export const MSFS_NUMERIC_SIMVARS = [
+  ['AUTOPILOT HEADING LOCK DIR', 'degrees', 'Cap sélecté', '°', 0],
+  ['AUTOPILOT ALTITUDE LOCK VAR', 'feet', 'Altitude sélectée', ' ft', 0],
+  ['AUTOPILOT VERTICAL HOLD VAR', 'feet per minute', 'Vitesse verticale sélectée', ' fpm', 0],
+  ['AUTOPILOT AIRSPEED HOLD VAR', 'knots', 'Vitesse sélectée', ' kt', 0],
+  ['NAV OBS:1', 'degrees', 'Course VOR1', '°', 0],
+  ['KOHLSMAN SETTING MB:1', 'millibars', 'Calage altimétrique', ' hPa', 0],
+  ['ELEVATOR TRIM PCT', 'percent', 'Compensateur', ' %', 0],
+  ['GENERAL ENG THROTTLE LEVER POSITION:1', 'percent', 'Manette des gaz (moteur 1)', ' %', 0],
+  ['FLAPS HANDLE PERCENT', 'percent', 'Levier de volets', ' %', 0],
+  ['SPOILERS HANDLE POSITION', 'percent', 'Levier d’aérofreins', ' %', 0],
+  ['GENERAL ENG MIXTURE LEVER POSITION:1', 'percent', 'Mélange (moteur 1)', ' %', 0],
+  ['GENERAL ENG PROPELLER LEVER POSITION:1', 'percent', 'Pas d’hélice (moteur 1)', ' %', 0],
+  ['INDICATED ALTITUDE', 'feet', 'Altitude indiquée', ' ft', 0],
+  ['AIRSPEED INDICATED', 'knots', 'Vitesse indiquée', ' kt', 0],
+  ['HEADING INDICATOR', 'degrees', 'Cap', '°', 0],
+];
+
+const dialPreset = (label, inc, dec, press, simvar, title, icon) => {
+  const [, unit, , suffix, decimals] = MSFS_NUMERIC_SIMVARS.find(([v]) => v === simvar);
+  return {
+    label,
+    action: {
+      type: 'dial',
+      sensitivity: 'normal',
+      inc: { type: 'msfs', event: inc },
+      dec: { type: 'msfs', event: dec },
+      press: press ? { type: 'msfs', event: press } : null,
+      display: { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' },
+    },
+    face: { title, icon: `/public/icons/avia/${icon}.svg`, color: '#1e2533' },
+  };
+};
+
+const sliderPreset = (label, event, simvar, title, icon, min = 0, max = 16383) => ({
+  label,
+  action: {
+    type: 'slider',
+    mode: 'value',
+    set: { type: 'msfs', event },
+    min,
+    max,
+    sync: { simvar, unit: 'percent', min: min < 0 ? -100 : 0, max: 100 },
+    press: null,
+  },
+  face: { title, icon: `/public/icons/avia/${icon}.svg`, color: '#1e2533', span: { w: 1, h: 3 } },
+});
+
+// Boutons rotatifs : tourner = + / −, appuyer = valider (engager le mode, caler…).
+export const MSFS_DIAL_PRESETS = [
+  dialPreset('Bouton HDG', 'HEADING_BUG_INC', 'HEADING_BUG_DEC', 'AP_HDG_HOLD', 'AUTOPILOT HEADING LOCK DIR', 'HDG', 'hdg'),
+  dialPreset('Bouton ALT', 'AP_ALT_VAR_INC', 'AP_ALT_VAR_DEC', 'AP_ALT_HOLD', 'AUTOPILOT ALTITUDE LOCK VAR', 'ALT', 'alt'),
+  dialPreset('Molette VS', 'AP_VS_VAR_INC', 'AP_VS_VAR_DEC', 'AP_VS_HOLD', 'AUTOPILOT VERTICAL HOLD VAR', 'VS', 'vs'),
+  dialPreset('Bouton SPD', 'AP_SPD_VAR_INC', 'AP_SPD_VAR_DEC', 'AP_AIRSPEED_HOLD', 'AUTOPILOT AIRSPEED HOLD VAR', 'SPD', 'athr'),
+  dialPreset('Bouton CRS', 'VOR1_OBI_INC', 'VOR1_OBI_DEC', null, 'NAV OBS:1', 'CRS', 'nav'),
+  dialPreset('Bouton BARO', 'KOHLSMAN_INC', 'KOHLSMAN_DEC', 'BAROMETRIC', 'KOHLSMAN SETTING MB:1', 'BARO', 'altimeter'),
+  dialPreset('Molette de compensateur', 'ELEV_TRIM_UP', 'ELEV_TRIM_DN', null, 'ELEVATOR TRIM PCT', 'TRIM', 'trim-up'),
+];
+
+// Curseurs : position envoyée au simulateur (0 → 16383) et relue pour rester synchronisée.
+export const MSFS_SLIDER_PRESETS = [
+  sliderPreset('Manette des gaz', 'THROTTLE_SET', 'GENERAL ENG THROTTLE LEVER POSITION:1', 'Gaz', 'engine'),
+  sliderPreset('Levier de volets', 'FLAPS_SET', 'FLAPS HANDLE PERCENT', 'Volets', 'flaps-down'),
+  sliderPreset('Levier d’aérofreins', 'SPOILERS_SET', 'SPOILERS HANDLE POSITION', 'Aérofreins', 'spoilers'),
+  sliderPreset('Mélange', 'MIXTURE_SET', 'GENERAL ENG MIXTURE LEVER POSITION:1', 'Mélange', 'fuel'),
+  sliderPreset('Pas d’hélice', 'PROP_PITCH_SET', 'GENERAL ENG PROPELLER LEVER POSITION:1', 'Hélice', 'engine'),
 ];

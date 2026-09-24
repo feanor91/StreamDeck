@@ -1064,3 +1064,11 @@ body {
   border: 1px solid var(--line-2);
   background: var(--bg-2);
 }
+
+.step-head .step-title {
+  flex: none;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+}

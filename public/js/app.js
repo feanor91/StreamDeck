@@ -6,7 +6,7 @@ import {
   libraryItemInfo, createFromLibrary, keyFace, isMac, isIconPath,
 } from './catalog.js';
 import { computeCells, placementError, findFreeSlot, keySpan, stateKey } from '/shared/layout.js';
-import { MSFS_EVENTS, MSFS_EVENT_LABELS, MSFS_SIMVARS, AVIA_ICONS } from '/shared/msfs.js';
+import { MSFS_EVENTS, MSFS_EVENT_LABELS, MSFS_SIMVARS, MSFS_NUMERIC_SIMVARS, AVIA_ICONS } from '/shared/msfs.js';
 
 const $ = (id) => document.getElementById(id);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -26,6 +26,8 @@ const state = {
   iconTab: 'emoji',
   faceTab: 0, // apparence éditée d'une bascule : 0 = état 1, 1 = état 2
   toggles: {}, // états courants des bascules (clé : profil/page/index)
+  levels: {}, // positions des curseurs (0..1)
+  values: {}, // valeurs affichées par les boutons rotatifs (lues dans MSFS)
   connected: false,
 };
 
@@ -38,6 +40,12 @@ const keyAt = (i) => page().keys[i] ?? null;
 const layout = () => (state.status?.layouts ?? FALLBACK_LAYOUTS)[state.config.layout] ?? { rows: 3, cols: 5 };
 const slotCount = () => layout().rows * layout().cols;
 const toggleState = (i) => (state.toggles[stateKey(profile().id, page().id, i)] ? 1 : 0);
+// Valeurs en direct d'une touche continue ; « vertical » selon la forme de la touche.
+function liveFor(i, cell) {
+  const sk = stateKey(profile().id, page().id, i);
+  const { w, h: hh } = cell ?? spanOf(keyAt(i));
+  return { value: state.values[sk], level: state.levels[sk] ?? 0, angle: 0, vertical: hh >= w };
+}
 const spanOf = (key) => ({ w: Math.max(1, Number(key?.span?.w) || 1), h: Math.max(1, Number(key?.span?.h) || 1) });
 
 function ensureSelection() {
@@ -230,7 +238,7 @@ function buildSlot(cell) {
         keyMenu({ x: e.clientX, y: e.clientY }, i);
       },
     },
-    keyFace(key, toggleState(i)),
+    keyFace(key, toggleState(i), liveFor(i, cell)),
   );
   if (!key) slot.append(h('span', { class: 'plus' }, icon('plus')));
   else if (key.action?.type === 'page') slot.append(h('span', { class: 'badge' }, icon('folder')));
@@ -434,7 +442,7 @@ function buildHero(i) {
   const key = keyAt(i);
   const t = ACTION_TYPES[key?.action?.type];
   // Aperçu : état en cours d'édition pour une bascule, forme réelle pour une touche fusionnée.
-  const face = keyFace(key, key?.action?.type === 'toggle' ? state.faceTab : 0);
+  const face = keyFace(key, key?.action?.type === 'toggle' ? state.faceTab : 0, key ? liveFor(i) : {});
   const { w, h: hh } = spanOf(key);
   if (key && (w > 1 || hh > 1)) {
     face.style.aspectRatio = `${w} / ${hh}`;
@@ -593,6 +601,10 @@ function actionFields(getAction, tag) {
       return [toggleEditor(getAction, tag)];
     case 'msfs':
       return msfsFields(getAction, tag);
+    case 'dial':
+      return [dialEditor(getAction, tag)];
+    case 'slider':
+      return [sliderEditor(getAction, tag)];
     case 'delay':
       return [textField(getAction, 'ms', 'Durée (millisecondes)', { tag, type: 'number', placeholder: '300' })];
     default:
@@ -998,6 +1010,192 @@ function simSyncField(getAction, tag) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Bouton rotatif et curseur
+// ---------------------------------------------------------------------------
+
+// Carte d'une action interne (ex. « Tourner + ») : type au choix, champs de l'action.
+function innerActionCard(title, getParent, prop, tag, { optional = false } = {}) {
+  const inner = getParent()[prop];
+  const getInner = () => getParent()[prop];
+  return h(
+    'div',
+    { class: 'step' },
+    h(
+      'div',
+      { class: 'step-head' },
+      h('span', { class: 'step-title' }, title),
+      h(
+        'select',
+        {
+          onchange: (e) =>
+            commit(() => {
+              getParent()[prop] = e.target.value ? ACTION_TYPES[e.target.value].create() : null;
+            }),
+        },
+        optional ? h('option', { value: '', selected: !inner?.type }, 'Aucune') : null,
+        ...INNER_TYPES.map((t) => h('option', { value: t, selected: t === inner?.type }, `${ACTION_TYPES[t].icon}  ${ACTION_TYPES[t].long}`)),
+      ),
+    ),
+    inner?.type
+      ? h(
+          'div',
+          { class: 'step-body' },
+          ...actionFields(getInner, `${tag}:${prop}`),
+          ['hotkey', 'text'].includes(inner.type) ? compactTarget(getInner, `${tag}:${prop}`) : null,
+        )
+      : null,
+  );
+}
+
+// Choix d'une variable numérique MSFS (valeur affichée ou position suivie).
+function numericSimvarSelect(current, onPick, { filter } = {}) {
+  const list = MSFS_NUMERIC_SIMVARS.filter((x) => !filter || filter(x));
+  return h(
+    'select',
+    { onchange: (e) => onPick(list.find(([v]) => v === e.target.value)) },
+    h('option', { value: '', disabled: true, selected: !current }, 'Choisir une valeur…'),
+    ...list.map(([v, , label]) => h('option', { value: v, selected: v === current }, label)),
+  );
+}
+
+function dialEditor(getAction, tag) {
+  const a = getAction();
+  const sens = a.sensitivity ?? 'normal';
+  const display = a.display;
+  return h(
+    'div',
+    { class: 'field' },
+    h('div', { class: 'note info' }, icon('info'),
+      h('span', {}, 'Sur le Deck : glissez le doigt vers la droite ou vers le haut pour « + », vers la gauche ou vers le bas pour « − ». Un appui sans glisser déclenche l’action d’appui (valider, engager un mode…). Sur PC, la molette de la souris fonctionne aussi.')),
+    h('span', { class: 'field-label' }, 'Sensibilité'),
+    h(
+      'div',
+      { class: 'segmented' },
+      ...[['fine', 'Fine'], ['normal', 'Normale'], ['fast', 'Rapide']].map(([id, label]) =>
+        h('button', { class: sens === id ? 'on' : '', onclick: () => commit(() => (getAction().sensitivity = id)) }, label),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'steps' },
+      innerActionCard('Tourner +', getAction, 'inc', tag),
+      innerActionCard('Tourner −', getAction, 'dec', tag),
+      innerActionCard('Appui', getAction, 'press', tag, { optional: true }),
+    ),
+    h(
+      'div',
+      { class: 'field sim-sync' },
+      h(
+        'label',
+        { class: 'switch' },
+        h('input', {
+          type: 'checkbox',
+          checked: !!display?.simvar,
+          onchange: (e) =>
+            commit(() => {
+              if (!e.target.checked) return (getAction().display = null);
+              const [simvar, unit, , suffix, decimals] = MSFS_NUMERIC_SIMVARS[0];
+              getAction().display = { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' };
+            }),
+        }),
+        'Afficher une valeur de MSFS sur la touche',
+      ),
+      display?.simvar
+        ? numericSimvarSelect(display.simvar, (x) =>
+            commit(() => {
+              const [simvar, unit, , suffix, decimals] = x;
+              getAction().display = { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' };
+            }),
+          )
+        : null,
+    ),
+  );
+}
+
+function sliderEditor(getAction, tag) {
+  const a = getAction();
+  const mode = a.mode ?? 'value';
+  const axisEvents = MSFS_EVENTS.find((g) => g.group.startsWith('Axes'))?.items ?? [];
+  const numField = (label, prop, hint) =>
+    h('label', { class: 'field' }, h('span', {}, label),
+      h('input', {
+        type: 'number',
+        value: a[prop] ?? '',
+        oninput: (e) => commit(() => (getAction()[prop] = Number(e.target.value)), { tag: `${tag}:${prop}`, render: 'key' }),
+      }),
+      hint ? h('span', { class: 'hint' }, hint) : null);
+
+  const valueMode = [
+    h(
+      'label',
+      { class: 'field' },
+      h('span', {}, 'Commande MSFS qui reçoit la position'),
+      h(
+        'select',
+        {
+          onchange: (e) =>
+            commit(() => {
+              getAction().set = { type: 'msfs', event: e.target.value };
+              // Le compensateur va de −16383 à +16383, les autres axes de 0 à 16383.
+              getAction().min = e.target.value === 'ELEVATOR_TRIM_SET' ? -16383 : 0;
+              getAction().max = 16383;
+            }),
+        },
+        ...axisEvents.map(([id, label]) => h('option', { value: id, selected: id === a.set?.event }, label)),
+      ),
+    ),
+    h('div', { class: 'row' }, numField('Valeur en bas', 'min'), numField('Valeur en haut', 'max')),
+    h(
+      'div',
+      { class: 'field sim-sync' },
+      h(
+        'label',
+        { class: 'switch' },
+        h('input', {
+          type: 'checkbox',
+          checked: !!a.sync?.simvar,
+          onchange: (e) =>
+            commit(() => {
+              if (!e.target.checked) return (getAction().sync = null);
+              const pct = MSFS_NUMERIC_SIMVARS.find((x) => x[1] === 'percent');
+              getAction().sync = { simvar: pct[0], unit: 'percent', min: 0, max: 100 };
+            }),
+        }),
+        'Suivre la position dans MSFS (levier bougé dans le cockpit)',
+      ),
+      a.sync?.simvar
+        ? numericSimvarSelect(
+            a.sync.simvar,
+            ([simvar, unit]) => commit(() => (getAction().sync = { simvar, unit, min: simvar === 'ELEVATOR TRIM PCT' ? -100 : 0, max: 100 })),
+            { filter: (x) => x[1] === 'percent' },
+          )
+        : null,
+    ),
+    msfsNote(),
+  ];
+
+  const stepsMode = [
+    numField('Nombre de crans sur la course', 'notches', 'Glisser d’un bout à l’autre envoie ce nombre de « + » ou de « − ».'),
+    h('div', { class: 'steps' }, innerActionCard('Vers le haut / la droite (+)', getAction, 'inc', tag), innerActionCard('Vers le bas / la gauche (−)', getAction, 'dec', tag)),
+  ];
+
+  return h(
+    'div',
+    { class: 'field' },
+    h('div', { class: 'note info' }, icon('info'),
+      h('span', {}, 'Sur le Deck : faites glisser le curseur. Il est vertical si la touche est plus haute que large (fusionnez-la en 1×3 pour un vrai levier). Un appui sans glisser déclenche l’action d’appui si elle est définie.')),
+    h(
+      'div',
+      { class: 'segmented' },
+      h('button', { class: mode === 'value' ? 'on' : '', onclick: () => commit(() => (getAction().mode = 'value')) }, 'Position (MSFS)'),
+      h('button', { class: mode === 'steps' ? 'on' : '', onclick: () => commit(() => (getAction().mode = 'steps')) }, 'Pas à pas (+ / −)'),
+    ),
+    ...(mode === 'value' ? valueMode : stepsMode),
+    h('div', { class: 'steps' }, innerActionCard('Appui', getAction, 'press', tag, { optional: true })),
+  );
+}
+
 // Taille d'une touche fusionnée (en nombre d'emplacements).
 function sizeField(i) {
   const { rows, cols } = layout();
@@ -1351,10 +1549,24 @@ function fitError(keys, j) {
 
 function assignLibrary(item, i) {
   const { action, face } = createFromLibrary(item);
+  // Préréglage de grande taille (ex. curseur 1×3) : on le réduit s'il ne tient pas ici.
+  if (face.span && !page().keys[i]) {
+    const { rows, cols } = layout();
+    if (placementError(page().keys, i, face.span.w, face.span.h, rows, cols, [i])) {
+      delete face.span;
+      toast('Pas assez de place pour la taille prévue : agrandissez la touche dans Apparence › Taille.', 'info', 5000);
+    }
+  }
   commit(() => {
     const existing = page().keys[i];
     // Une touche existante garde son apparence personnalisée ; seule l'action change.
-    page().keys[i] = existing ? { ...existing, action } : { ...face, action };
+    // Exception : un préréglage complet (MSFS, rotatif, curseur…) apporte aussi son apparence.
+    if (existing && item.action) {
+      const { span } = existing;
+      page().keys[i] = { ...face, action, ...(span ? { span } : {}) };
+    } else {
+      page().keys[i] = existing ? { ...existing, action } : { ...face, action };
+    }
   });
   state.selected = i;
   renderGrid();
@@ -1759,10 +1971,12 @@ function connectEvents() {
     hello: async ({ revision }) => {
       // Reconnexion : on récupère les modifications faites entre-temps.
       if (revision !== state.revision && !dirty) {
-        const { config, revision: r, states } = await api.getConfig();
+        const { config, revision: r, states, levels, values } = await api.getConfig();
         state.config = config;
         state.revision = r;
         state.toggles = states ?? {};
+        state.levels = levels ?? {};
+        state.values = values ?? {};
         ensureSelection();
         renderAll();
       }
@@ -1777,6 +1991,14 @@ function connectEvents() {
     },
     press: ({ profileId, pageId, index, ok }) => {
       if (profileId === profile().id && pageId === page().id) flashSlot(index, ok);
+    },
+    value: ({ key, value }) => {
+      state.values[key] = value;
+      refreshKeyViews();
+    },
+    level: ({ key, level }) => {
+      state.levels[key] = level;
+      refreshKeyViews();
     },
     state: ({ key, state: value }) => {
       if (value) state.toggles[key] = 1;
@@ -1801,10 +2023,12 @@ async function init() {
   bindGlobal();
   renderLibrary();
   try {
-    const [{ config, revision, states }, status] = await Promise.all([api.getConfig(), api.status()]);
+    const [{ config, revision, states, levels, values }, status] = await Promise.all([api.getConfig(), api.status()]);
     state.config = config;
     state.revision = revision;
     state.toggles = states ?? {};
+    state.levels = levels ?? {};
+    state.values = values ?? {};
     state.status = status;
     state.connected = true;
   } catch (e) {

@@ -96,6 +96,8 @@ Raccourcis clavier : flèches pour se déplacer, `Suppr` pour effacer,
 | Page | Change la page du Deck (page précise, suivante ou précédente) |
 | Multi-actions | Enchaîne plusieurs actions avec des pauses |
 | Commande MSFS | Envoie une commande à Microsoft Flight Simulator (SimConnect) |
+| Bouton rotatif | Tourner (glisser le doigt) pour « + » / « − », appuyer pour valider ; peut afficher une valeur du simulateur |
+| Curseur | Glisser pour régler une position (gaz, volets…) ou envoyer des crans « + » / « − » |
 | Bascule (2 états) | Alterne entre deux états (ex. train rentré / sorti) : titre, icône, couleur et action propres à chaque état |
 
 ### Touches à bascule
@@ -141,6 +143,33 @@ L'onglet *Aviation* du choix d'icône propose 36 icônes dédiées.
 
 La liaison utilise la bibliothèque [node-simconnect](https://github.com/EvenAR/node-simconnect)
 (licence LGPL-3.0).
+
+### Boutons rotatifs et curseurs
+
+**Bouton rotatif** (catégorie *Avancé*, ou préréglages MSFS HDG, ALT, VS, SPD,
+CRS, BARO, molette de compensateur) :
+
+- sur le Deck, glissez le doigt vers la droite ou vers le haut pour « + », vers
+  la gauche ou vers le bas pour « − » ; chaque cran envoie l'action correspondante
+  (sensibilité fine, normale ou rapide) ;
+- **un appui sans glisser déclenche l'action d'appui** : valider une valeur,
+  engager un mode du pilote automatique, caler l'altimètre… ;
+- sur PC, la molette de la souris tourne le bouton ;
+- le bouton peut afficher en direct une valeur de MSFS (cap sélecté « 275° »,
+  altitude « 12 000 ft », calage « 1013 hPa »…).
+
+**Curseur** (préréglages MSFS : manette des gaz, volets, aérofreins, mélange,
+pas d'hélice) :
+
+- vertical si la touche est plus haute que large : fusionnez-la en 1×3 pour
+  obtenir un vrai levier ; horizontal sinon ;
+- mode *Position (MSFS)* : la position est envoyée en continu au simulateur
+  (ex. `THROTTLE_SET` de 0 à 16383) et le curseur suit le levier si vous le
+  bougez dans le cockpit ;
+- mode *Pas à pas* : glisser d'un bout à l'autre envoie un nombre réglable de
+  « + » ou de « − » (raccourcis clavier, commandes…), pour n'importe quel logiciel ;
+- un appui sans glisser déclenche l'action d'appui si elle est définie, sinon le
+  curseur saute à l'endroit touché.
 
 ### Touches fusionnées
 
@@ -224,6 +253,7 @@ server/
   executors/          Envoi des touches : windows.js (+ agent .ps1), macos.js, linux.js
 shared/keys.js        Définition des touches, commune au serveur et à l'interface
 shared/layout.js      Placement des touches (fusion, orientation), bascules
+shared/controls.js    Boutons rotatifs et curseurs : conversions, affichage des valeurs
 shared/msfs.js        Catalogue MSFS : commandes, variables, préréglages
 public/icons/avia/    Icônes aviation (SVG)
 public/               Interface de configuration (index.html) et Deck (deck.html)

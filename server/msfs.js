@@ -19,16 +19,18 @@ export function createMsfs({ log = console, load = () => import('node-simconnect
   let stopped = false;
   let nextId = 1;
   const eventIds = new Map(); // nom d'événement → id client (par connexion)
-  const watched = new Map(); // simvar → { id, value }
+  const watched = new Map(); // « SIMVAR|UNITÉ » → { id, simvar, unit, value }
+  const UNIT_RE = /^[A-Za-z0-9 /_.-]{1,40}$/;
+  const keyOf = (simvar, unit) => `${String(simvar).trim().toUpperCase()}|${String(unit || 'Bool').trim().toLowerCase()}`;
 
   const setStatus = (patch) => {
     status = { ...status, ...patch };
     onStatus(status);
   };
 
-  function subscribe(simvar, entry) {
+  function subscribe(entry) {
     const { SimConnectDataType, SimConnectPeriod, SimConnectConstants, DataRequestFlag } = lib;
-    handle.addToDataDefinition(entry.id, simvar, 'Bool', SimConnectDataType.FLOAT64);
+    handle.addToDataDefinition(entry.id, entry.simvar, entry.unit, SimConnectDataType.FLOAT64);
     handle.requestDataOnSimObject(entry.id, entry.id, SimConnectConstants.OBJECT_ID_USER, SimConnectPeriod.SIM_FRAME, DataRequestFlag.DATA_REQUEST_FLAG_CHANGED);
   }
 
@@ -60,17 +62,17 @@ export function createMsfs({ log = console, load = () => import('node-simconnect
       const { recvOpen, handle: h } = await lib.open(APP_NAME, lib.Protocol.KittyHawk);
       handle = h;
       h.on('simObjectData', (data) => {
-        for (const [simvar, entry] of watched) {
+        for (const entry of watched.values()) {
           if (entry.id !== data.requestID) continue;
           entry.value = data.data.readFloat64();
-          onValue(simvar, entry.value);
+          onValue(entry.simvar, entry.value, entry.unit);
         }
       });
       h.on('exception', (e) => log.warn?.(`[MSFS] Exception SimConnect ${e.exceptionName ?? e.exception} (paquet ${e.sendId})`));
       h.on('quit', () => dropConnection('Simulateur fermé.'));
       h.on('close', () => handle === h && dropConnection('Connexion au simulateur perdue.'));
       h.on('error', (e) => log.warn?.(`[MSFS] ${e.message}`));
-      for (const [simvar, entry] of watched) subscribe(simvar, entry);
+      for (const entry of watched.values()) subscribe(entry);
       setStatus({ connected: true, simName: recvOpen?.applicationName || 'Microsoft Flight Simulator', reason: null });
     } catch {
       // Simulateur non lancé : on réessaie plus tard, sans bruit.
@@ -109,27 +111,36 @@ export function createMsfs({ log = console, load = () => import('node-simconnect
       );
     },
 
-    /** Déclare les variables à suivre (celles des bascules synchronisées). */
-    watch(simvars) {
-      const wanted = new Set([...simvars].map((s) => String(s).trim().toUpperCase()).filter(isValidSimvar));
-      for (const simvar of wanted) {
-        if (watched.has(simvar)) continue;
-        const entry = { id: nextId++, value: null };
-        watched.set(simvar, entry);
-        if (handle) subscribe(simvar, entry);
+    /**
+     * Déclare les variables à suivre : chaînes (état on/off, unité « Bool ») ou
+     * objets { simvar, unit } pour une valeur numérique (ex. « degrees », « feet »).
+     */
+    watch(list) {
+      const wanted = new Map();
+      for (const item of list) {
+        const simvar = String(typeof item === 'string' ? item : item?.simvar ?? '').trim().toUpperCase();
+        const unit = String((typeof item === 'string' ? null : item?.unit) || 'Bool').trim();
+        if (!isValidSimvar(simvar) || !UNIT_RE.test(unit)) continue;
+        wanted.set(keyOf(simvar, unit), { simvar, unit });
       }
-      for (const [simvar, entry] of watched) {
-        if (wanted.has(simvar)) continue;
+      for (const [k, { simvar, unit }] of wanted) {
+        if (watched.has(k)) continue;
+        const entry = { id: nextId++, simvar, unit, value: null };
+        watched.set(k, entry);
+        if (handle) subscribe(entry);
+      }
+      for (const [k, entry] of watched) {
+        if (wanted.has(k)) continue;
         if (handle) {
           handle.requestDataOnSimObject(entry.id, entry.id, lib.SimConnectConstants.OBJECT_ID_USER, lib.SimConnectPeriod.NEVER);
         }
-        watched.delete(simvar);
+        watched.delete(k);
       }
     },
 
     /** Dernière valeur connue d'une variable (null si inconnue). */
-    value(simvar) {
-      return watched.get(String(simvar).trim().toUpperCase())?.value ?? null;
+    value(simvar, unit = 'Bool') {
+      return watched.get(keyOf(simvar, unit))?.value ?? null;
     },
 
     close() {

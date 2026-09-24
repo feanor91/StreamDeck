@@ -17,6 +17,7 @@ export const api = {
   status: () => request('GET', '/api/status'),
   press: (profileId, pageId, index) => request('POST', '/api/press', { profileId, pageId, index }),
   test: (action) => request('POST', '/api/test', { action }),
+  control: (profileId, pageId, index, input) => request('POST', '/api/press', { profileId, pageId, index, input: { ...input, clientId } }),
   sync: (profileId, pageId, index) => request('POST', '/api/press', { profileId, pageId, index, syncOnly: true }),
   windows: () => request('GET', '/api/windows'),
 };

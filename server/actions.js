@@ -5,7 +5,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Types d'action exécutés côté serveur. Les actions de navigation ("page")
 // sont gérées par la surface Deck elle-même.
-export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle', 'msfs'];
+export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle', 'msfs', 'dial', 'slider'];
 
 /**
  * Touche à bascule : action envoyée selon l'état courant (0 = état 1, 1 = état 2).
@@ -85,6 +85,14 @@ export async function runAction(executor, action, depth = 0, ctx = {}) {
       if (inner.type === 'toggle') throw new Error('Une bascule ne peut pas en contenir une autre.');
       return runAction(executor, inner, depth + 1, ctx);
     }
+    case 'dial':
+      // Bouton « Tester » : on simule un appui (ou un cran « + » s'il n'y a pas d'action d'appui).
+      if (action.press?.type) return runAction(executor, action.press, depth + 1, ctx);
+      if (action.inc?.type) return runAction(executor, action.inc, depth + 1, ctx);
+      throw new Error('Aucune action définie pour ce bouton rotatif.');
+    case 'slider':
+      if (action.press?.type) return runAction(executor, action.press, depth + 1, ctx);
+      throw new Error('Un curseur se teste depuis le Deck (glisser le curseur).');
     case 'msfs':
       if (!action.event) throw new Error('Aucun événement MSFS choisi.');
       if (!ctx.msfs) throw new Error('Liaison MSFS indisponible.');

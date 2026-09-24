@@ -127,3 +127,52 @@ test('serveur : bascule synchronisée avec une variable MSFS', async () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test('serveur : bouton rotatif et curseur MSFS', async () => {
+  const { MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS } = await import('../shared/msfs.js');
+  const sim = fakeSimConnect();
+  const sentNames = () => {
+    const names = new Map(sim.calls.filter((c) => c[0] === 'map').map((c) => [c[1], c[2]]));
+    return sim.calls.filter((c) => c[0] === 'send').map((c) => [names.get(c[1]), c[2]]);
+  };
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-ctl-'));
+  const port = 4300 + Math.floor(Math.random() * 400);
+  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
+  const url = `http://127.0.0.1:${port}`;
+  const get = () => fetch(`${url}/api/config`).then((r) => r.json());
+  const post = (data) =>
+    fetch(`${url}/api/press`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then((r) => r.json());
+  try {
+    await tick();
+    const { config } = await get();
+    const pageId = config.profiles[0].pages[0].id;
+    const hdg = MSFS_DIAL_PRESETS.find((p) => p.label === 'Bouton HDG');
+    const gaz = MSFS_SLIDER_PRESETS.find((p) => p.label === 'Manette des gaz');
+    config.profiles[0].pages[0].keys[9] = { ...hdg.face, action: hdg.action };
+    config.profiles[0].pages[0].keys[4] = { ...gaz.face, span: undefined, action: gaz.action };
+    await fetch(`${url}/api/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config }) });
+    await tick();
+    const base = { profileId: 'default', pageId };
+
+    // Valeur affichée sur le bouton : cap sélecté lu dans le simulateur.
+    sim.emitValue('AUTOPILOT HEADING LOCK DIR', 275);
+    assert.equal((await get()).values[`default/${pageId}/9`], 275);
+
+    // Tourner : 3 crans à droite, 2 à gauche ; appuyer : engager le mode HDG.
+    assert.equal((await post({ ...base, index: 9, input: { kind: 'dial', delta: 3 } })).steps, 3);
+    await post({ ...base, index: 9, input: { kind: 'dial', delta: -2 } });
+    await post({ ...base, index: 9, input: { kind: 'press' } });
+    assert.deepEqual(sentNames().map((x) => x[0]), ['HEADING_BUG_INC', 'HEADING_BUG_INC', 'HEADING_BUG_INC', 'HEADING_BUG_DEC', 'HEADING_BUG_DEC', 'AP_HDG_HOLD']);
+
+    // Curseur : mi-course → THROTTLE_SET 8192, position mémorisée.
+    const r = await post({ ...base, index: 4, input: { kind: 'slider', level: 0.5 } });
+    assert.equal(r.level, 0.5);
+    assert.deepEqual(sentNames().at(-1), ['THROTTLE_SET', 8192]);
+    // Le simulateur annonce 25 % : le curseur suit.
+    sim.emitValue('GENERAL ENG THROTTLE LEVER POSITION:1', 25);
+    assert.equal((await get()).levels[`default/${pageId}/4`], 0.25);
+  } finally {
+    await deck.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});
