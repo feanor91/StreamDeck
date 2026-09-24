@@ -74,6 +74,29 @@ Store. L'application prévient au démarrage si la version est trop ancienne.
   Play Protect), ou videz le cache du Play Store ;
 - en dernier recours, depuis le PC : `adb install -r StreamDeck-Android-x.y.z.apk`.
 
+### Version et mises à jour
+
+La version installée est affichée partout : à côté du nom **StreamDeck** dans
+l'interface de configuration, en haut du menu de l'icône de la zone de
+notification, et en bas de l'écran de connexion Android.
+
+Les applications vérifient d'elles-mêmes (au démarrage puis toutes les 6 heures)
+les versions publiées sur GitHub :
+
+- **PC (Windows, AppImage)** : la nouvelle version se télécharge en arrière-plan.
+  Une notification et une pastille « Installer la vX » apparaissent ; un clic
+  redémarre StreamDeck sur la nouvelle version (sinon elle s'installe à la
+  fermeture). Menu de l'icône → « Rechercher une mise à jour », ou clic sur le
+  numéro de version dans l'interface, pour vérifier tout de suite.
+- **Android** : une fenêtre propose d'installer la nouvelle version ; l'APK est
+  téléchargé puis l'installeur d'Android s'ouvre (confirmez « Installer »). Sur
+  Android 8 et plus, autorisez StreamDeck à installer des applications la
+  première fois. « Rechercher une mise à jour » en bas de l'écran de connexion.
+
+Le dépôt GitHub doit être **public** pour que les applications puissent lire les
+versions publiées. La mise à jour automatique d'Android fonctionne à partir de la
+0.6.1 (première version signée avec la clé définitive).
+
 ## Interface de configuration
 
 - **Bibliothèque d'actions** (à gauche) : glissez une action sur une touche, ou

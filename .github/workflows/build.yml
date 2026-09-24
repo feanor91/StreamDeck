@@ -102,13 +102,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # latest*.yml et .blockmap : lus par l'application installée pour se mettre à jour.
           - os: windows-latest
             dist: dist:win
-            files: dist/*.exe
+            files: |
+              dist/*.exe
+              dist/*.exe.blockmap
+              dist/latest.yml
             name: StreamDeck-Windows
           - os: ubuntu-latest
             dist: dist:linux
-            files: dist/*.AppImage
+            files: |
+              dist/*.AppImage
+              dist/latest-linux.yml
             name: StreamDeck-Linux
     steps:
       - uses: actions/checkout@v4
@@ -140,6 +146,12 @@ jobs:
           grep -q "public/icons/avia/gear-down.svg" asar.txt
           echo "node-simconnect et icônes aviation présents dans $ASAR"
           ls dist/*-unpacked/resources/app.asar.unpacked/node_modules/regedit/vbs | head -3
+      - name: Vérifier les fichiers de mise à jour automatique
+        shell: bash
+        run: |
+          ls dist/*-unpacked/resources/app-update.yml
+          cat dist/latest*.yml
+          grep -q "node_modules/electron-updater/" asar.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}

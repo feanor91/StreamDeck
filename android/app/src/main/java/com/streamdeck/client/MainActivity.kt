@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.WindowInsets
@@ -21,11 +22,13 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 /**
  * Une seule activité, deux écrans affichés dans la même WebView :
@@ -43,6 +46,8 @@ class MainActivity : Activity() {
     private var pendingError: String? = null
     private var autoConnect: DeckServer? = null
     @Volatile private var attempt = 0
+    private var download: Future<*>? = null
+    private var installAfterPermission = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +74,16 @@ class MainActivity : Activity() {
         // Reconnexion automatique au dernier PC utilisé (l'écran de connexion affiche la progression).
         if (prefs.getBoolean("auto_connect", true)) autoConnect = lastServer()
         showConnect()
+        checkForUpdate(manual = false)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Retour des réglages « Installer des applis inconnues » : on reprend l'installation.
+        if (installAfterPermission && Updater.canInstall(this)) {
+            installAfterPermission = false
+            install()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -120,6 +135,97 @@ class MainActivity : Activity() {
             .setNegativeButton("Continuer", null)
             .show()
     }
+
+    // --- Mises à jour (versions publiées sur GitHub) --------------------------------------
+
+    private fun checkForUpdate(manual: Boolean) {
+        if (!manual && System.currentTimeMillis() - prefs.getLong("update_checked", 0) < UPDATE_EVERY) return
+        if (manual) toast("Recherche de mise à jour…")
+        io.execute {
+            val result = runCatching { Updater.latest() }
+            main.post {
+                if (isFinishing) return@post
+                val current = BuildConfigCompat.versionName(this)
+                result.onSuccess { r ->
+                    prefs.edit().putLong("update_checked", System.currentTimeMillis()).apply()
+                    when {
+                        Updater.compare(r.version, current) <= 0 -> if (manual) toast("StreamDeck est à jour (version $current).")
+                        !manual && prefs.getString("update_skipped", null) == r.version -> Unit
+                        else -> offerUpdate(r, current)
+                    }
+                }.onFailure { e ->
+                    if (manual) offerDownloadPage("Impossible de vérifier les mises à jour (${e.message}).")
+                }
+            }
+        }
+    }
+
+    private fun offerUpdate(r: Release, current: String) {
+        if (r.apkUrl.isBlank()) return offerDownloadPage("La version ${r.version} est disponible, mais sans application Android.")
+        dialog()
+            .setTitle("Mise à jour disponible")
+            .setMessage("StreamDeck ${r.version} est disponible (version installée : $current).\n\nL'installation ne modifie pas vos réglages.")
+            .setPositiveButton("Installer") { _, _ -> startDownload(r) }
+            .setNeutralButton("Ignorer cette version") { _, _ -> prefs.edit().putString("update_skipped", r.version).apply() }
+            .setNegativeButton("Plus tard", null)
+            .show()
+    }
+
+    private fun startDownload(r: Release) {
+        val progress = dialog()
+            .setTitle("Téléchargement de StreamDeck ${r.version}")
+            .setMessage("Préparation…")
+            .setCancelable(false)
+            .setNegativeButton("Annuler") { _, _ -> download?.cancel(true) }
+            .show()
+        download = io.submit(Runnable {
+            val result = runCatching {
+                Updater.download(this, r.apkUrl) { pct ->
+                    main.post { progress.setMessage(if (pct >= 0) "$pct %" else "Téléchargement en cours…") }
+                }
+            }
+            main.post {
+                if (isFinishing) return@post
+                progress.dismiss()
+                if (download?.isCancelled == true) return@post
+                result.onSuccess { install() }
+                    .onFailure { e -> offerDownloadPage("Téléchargement impossible (${e.message}).") }
+            }
+        })
+    }
+
+    private fun install() {
+        if (!Updater.canInstall(this)) {
+            installAfterPermission = true
+            dialog()
+                .setTitle("Autorisation nécessaire")
+                .setMessage("Pour installer la mise à jour, autorisez StreamDeck à installer des applications, puis revenez dans StreamDeck.")
+                .setPositiveButton("Ouvrir les réglages") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                }
+                .setNegativeButton("Annuler") { _, _ -> installAfterPermission = false }
+                .show()
+            return
+        }
+        runCatching { startActivity(Updater.installIntent(this)) }
+            .onFailure { e -> offerDownloadPage("Impossible d'ouvrir l'installeur (${e.message}).") }
+    }
+
+    /** Solution de repli : télécharger l'APK depuis le navigateur. */
+    private fun offerDownloadPage(message: String) {
+        dialog()
+            .setTitle("Mise à jour")
+            .setMessage(message)
+            .setPositiveButton("Page de téléchargement") { _, _ ->
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.RELEASES_PAGE))) }
+            }
+            .setNegativeButton("Fermer", null)
+            .show()
+    }
+
+    private fun dialog() = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     // --- Plein écran ------------------------------------------------------------------------
 
@@ -271,6 +377,11 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun serverName(): String = current?.name ?: ""
+
+        @JavascriptInterface
+        fun checkUpdate() {
+            main.post { checkForUpdate(manual = true) }
+        }
     }
 
     private inner class Client : WebViewClient() {
@@ -295,6 +406,9 @@ class MainActivity : Activity() {
 
 /** Version minimale du moteur Chromium de la WebView (requêtes de conteneur et color-mix CSS). */
 private const val MIN_WEBVIEW = 111
+
+/** Recherche automatique de mise à jour au plus une fois toutes les 6 heures. */
+private const val UPDATE_EVERY = 6 * 3600_000L
 
 private object BuildConfigCompat {
     fun versionName(activity: Activity): String = runCatching {

@@ -14,7 +14,7 @@
         <div class="brand">
           <img src="/public/favicon.svg" alt="" width="30" height="30" />
           <div>
-            <strong>StreamDeck</strong>
+            <strong>StreamDeck <small class="app-version" id="appVersion" title="Rechercher une mise à jour"></small></strong>
             <span>Gestion des touches</span>
           </div>
         </div>
@@ -29,6 +29,9 @@
 
         <div class="topbar-right">
           <span class="save-state" id="saveState" data-state="idle"></span>
+          <button class="status-pill update-pill" id="updatePill" data-state="ok" hidden>
+            <i></i><span></span>
+          </button>
           <span class="status-pill" id="msfsPill" data-state="off" title="Liaison avec Microsoft Flight Simulator">
             <i></i><span>MSFS</span>
           </span>

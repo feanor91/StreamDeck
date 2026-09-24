@@ -18,6 +18,7 @@ const state = {
   config: null,
   revision: 0,
   status: null,
+  update: null, // état de la recherche de mise à jour (GET /api/update)
   profileId: null,
   pageId: null,
   selected: null,
@@ -331,6 +332,64 @@ function renderMsfs() {
   pill.dataset.state = on ? 'ok' : 'off';
   pill.querySelector('span').textContent = on ? 'MSFS connecté' : 'MSFS';
   pill.title = on ? `Connecté à ${m.simName || 'Flight Simulator'} (SimConnect)` : m?.reason ?? 'Flight Simulator non détecté';
+}
+
+// --- Version et mises à jour -----------------------------------------------------------------
+
+function renderUpdate() {
+  const u = state.update;
+  const version = u?.current ?? state.status?.version;
+  $('appVersion').textContent = version ? `v${version}` : '';
+  const pill = $('updatePill');
+  const label = pill.querySelector('span');
+  pill.hidden = !u || !['available', 'downloading', 'ready'].includes(u.state);
+  if (pill.hidden) return;
+  if (u.state === 'ready') {
+    label.textContent = `Installer la v${u.latest}`;
+    pill.title = u.canInstall ? 'Redémarrer StreamDeck et installer la mise à jour' : 'Mise à jour prête';
+  } else if (u.state === 'downloading') {
+    label.textContent = `Téléchargement v${u.latest}… ${u.progress ?? 0} %`;
+    pill.title = 'La mise à jour sera proposée à la fin du téléchargement.';
+  } else {
+    label.textContent = `v${u.latest} disponible`;
+    pill.title = 'Ouvrir la page de téléchargement';
+  }
+}
+
+async function onUpdatePill() {
+  const u = state.update;
+  if (!u) return;
+  if (u.state === 'ready' && u.canInstall) {
+    const ok = await confirmModal({
+      title: `Installer StreamDeck ${u.latest} ?`,
+      message: 'StreamDeck va se fermer, installer la mise à jour puis redémarrer. Le Deck sera indisponible quelques secondes.',
+      confirmLabel: 'Installer et redémarrer',
+    });
+    if (!ok) return;
+    try {
+      await api.installUpdate();
+      toast('Installation de la mise à jour…');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  } else if (u.state === 'available') {
+    window.open(u.url, '_blank', 'noopener');
+  }
+}
+
+async function checkUpdateNow() {
+  if (!state.status?.canAdmin) return;
+  toast('Recherche de mise à jour…');
+  try {
+    state.update = await api.checkUpdate();
+    renderUpdate();
+    const u = state.update;
+    if (u.state === 'current') toast(`StreamDeck est à jour (v${u.current})`, 'ok');
+    else if (u.state === 'error') toast(u.error, 'err', 6000);
+    else if (u.latest) toast(`Nouvelle version disponible : v${u.latest}`, 'ok');
+  } catch (e) {
+    toast(e.message, 'err');
+  }
 }
 
 function renderStatus() {
@@ -2092,6 +2151,8 @@ function bindGlobal() {
   $('redoBtn').addEventListener('click', redo);
   $('profileBtn').addEventListener('click', profileMenu);
   $('msfsPill').addEventListener('click', () => openExplorer());
+  $('updatePill').addEventListener('click', onUpdatePill);
+  $('appVersion').addEventListener('click', checkUpdateNow);
   $('librarySearch').addEventListener('input', renderLibrary);
   $('layoutSelect').addEventListener('change', (e) => {
     const value = e.target.value;
@@ -2123,8 +2184,10 @@ function connectEvents() {
       state.connected = true;
       try {
         state.status = await api.status();
+        state.update = await api.update();
       } catch {}
       renderStatus();
+      renderUpdate();
     },
     error: () => {
       state.connected = false;
@@ -2168,6 +2231,10 @@ function connectEvents() {
       if (value) state.toggles[key] = 1;
       else delete state.toggles[key];
       refreshKeyViews();
+    },
+    update: (u) => {
+      state.update = u;
+      renderUpdate();
     },
     msfs: (m) => {
       if (state.status) state.status.msfs = m;

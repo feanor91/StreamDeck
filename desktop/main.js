@@ -5,7 +5,12 @@ import { app, BrowserWindow, Tray, Menu, shell, dialog, clipboard, nativeImage, 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import updaterPkg from 'electron-updater';
 import { startDeckServer, lanAddresses } from '../server/app.js';
+import { createReleaseChecker } from '../server/update.js';
+import { RELEASES_URL } from '../shared/version.js';
+
+const { autoUpdater } = updaterPkg;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ICON = path.join(HERE, 'assets', 'icon.png');
@@ -18,6 +23,7 @@ let deckWindow = null;
 let tray = null;
 let quitting = false;
 let trayHintShown = false;
+let updater = null;
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -39,8 +45,10 @@ function prepareRegistryHelper() {
 async function boot() {
   app.setAppUserModelId('com.streamdeck.clone');
   prepareRegistryHelper();
+  updater = createUpdater();
+  updater.onChange(onUpdateChange);
   try {
-    deck = await startDeckServer({ port: PORT, dataDir: path.join(app.getPath('userData'), 'data') });
+    deck = await startDeckServer({ port: PORT, dataDir: path.join(app.getPath('userData'), 'data'), updater });
   } catch (e) {
     if (e.code !== 'EADDRINUSE' || !(await isDeckServer())) {
       dialog.showErrorBox(
@@ -135,10 +143,112 @@ function showDeckPreview() {
   deckWindow.loadURL(`http://localhost:${PORT}/deck`);
 }
 
+// --- Mises à jour ----------------------------------------------------------------------------
+// Version installée (Windows, AppImage) : electron-updater lit les versions publiées sur GitHub,
+// télécharge la nouvelle en arrière-plan puis l'installe au redémarrage (ou à la fermeture).
+// En développement, ou si le format ne se met pas à jour tout seul : simple signalement.
+function createUpdater() {
+  const canSelfUpdate = app.isPackaged && (process.platform === 'win32' || (process.platform === 'linux' && !!process.env.APPIMAGE));
+  if (!canSelfUpdate) return createReleaseChecker({ current: app.getVersion() });
+
+  const listeners = new Set();
+  let state = { current: app.getVersion(), state: 'idle', latest: null, url: RELEASES_URL, notes: '', error: null, canInstall: false, progress: null };
+  const set = (patch) => {
+    state = { ...state, ...patch };
+    for (const fn of listeners) fn(state);
+  };
+  const releaseUrl = (v) => `${RELEASES_URL}/tag/v${v}`;
+
+  autoUpdater.logger = null;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => set({ state: 'checking', error: null }));
+  autoUpdater.on('update-not-available', () => set({ state: 'current' }));
+  autoUpdater.on('update-available', (info) => set({ state: 'downloading', latest: info.version, url: releaseUrl(info.version), progress: 0 }));
+  autoUpdater.on('download-progress', (p) => set({ progress: Math.round(p.percent) }));
+  autoUpdater.on('update-downloaded', (info) => set({ state: 'ready', latest: info.version, url: releaseUrl(info.version), canInstall: true, progress: 100 }));
+  autoUpdater.on('error', (e) => {
+    // Une erreur pendant le téléchargement ne doit pas masquer une mise à jour déjà prête.
+    if (state.state !== 'ready') set({ state: 'error', error: `Mise à jour impossible : ${String(e?.message ?? e).split('\n')[0]}` });
+  });
+
+  const check = async () => {
+    if (state.state === 'ready' || state.state === 'downloading') return state;
+    await autoUpdater.checkForUpdates().catch(() => {}); // l'erreur arrive aussi par l'événement « error »
+    return state;
+  };
+  setTimeout(check, 10_000);
+  setInterval(check, 6 * 3600_000).unref();
+
+  return {
+    status: () => state,
+    check,
+    install() {
+      if (state.state !== 'ready') throw Object.assign(new Error('Aucune mise à jour prête à installer.'), { status: 400 });
+      quitting = true;
+      // Laisse le temps à la réponse HTTP de partir avant de quitter.
+      setTimeout(() => autoUpdater.quitAndInstall(true, true), 300);
+    },
+    onChange(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+  };
+}
+
+let lastUpdateState = null;
+function onUpdateChange(u) {
+  if (u.state === lastUpdateState && u.state !== 'downloading') return;
+  const was = lastUpdateState;
+  lastUpdateState = u.state;
+  if (tray) refreshTrayMenu();
+  if (u.state === 'ready' && was !== 'ready' && Notification.isSupported()) {
+    const n = new Notification({
+      title: `StreamDeck ${u.latest} est prête`,
+      body: 'La mise à jour sera installée à la fermeture de StreamDeck. Cliquez pour redémarrer maintenant.',
+      icon: ICON,
+    });
+    n.on('click', () => updater.install());
+    n.show();
+  }
+}
+
+async function checkUpdatesNow() {
+  const u = await updater.check();
+  if (u.state === 'current') dialog.showMessageBox({ type: 'info', title: 'StreamDeck', message: `StreamDeck est à jour (version ${u.current}).` });
+  else if (u.state === 'error') dialog.showMessageBox({ type: 'warning', title: 'StreamDeck', message: u.error });
+  else if (u.state === 'available') {
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'StreamDeck',
+      message: `La version ${u.latest} est disponible (installée : ${u.current}).`,
+      buttons: ['Télécharger', 'Plus tard'],
+    });
+    if (response === 0) shell.openExternal(u.url);
+  }
+}
+
+function updateMenuItem() {
+  const u = updater?.status();
+  if (!u) return [];
+  switch (u.state) {
+    case 'ready':
+      return [{ label: `Redémarrer et installer la version ${u.latest}`, click: () => updater.install() }];
+    case 'downloading':
+      return [{ label: `Téléchargement de la version ${u.latest}… ${u.progress ?? 0} %`, enabled: false }];
+    case 'available':
+      return [{ label: `Télécharger la version ${u.latest}`, click: () => shell.openExternal(u.url) }];
+    case 'checking':
+      return [{ label: 'Recherche de mise à jour…', enabled: false }];
+    default:
+      return [{ label: 'Rechercher une mise à jour', click: checkUpdatesNow }];
+  }
+}
+
 function createTray() {
   const image = nativeImage.createFromPath(TRAY_ICON);
   tray = new Tray(image.isEmpty() ? nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }) : image);
-  tray.setToolTip('StreamDeck');
+  tray.setToolTip(`StreamDeck ${app.getVersion()}`);
   tray.on('click', showMain);
   tray.on('double-click', showMain);
   refreshTrayMenu();
@@ -152,6 +262,9 @@ function refreshTrayMenu() {
   const login = app.getLoginItemSettings();
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      { label: `StreamDeck ${app.getVersion()}`, enabled: false },
+      ...updateMenuItem(),
+      { type: 'separator' },
       { label: 'Ouvrir la configuration', click: showMain },
       { label: 'Ouvrir le Deck sur ce PC', click: showDeckPreview },
       { type: 'separator' },
