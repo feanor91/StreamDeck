@@ -95,6 +95,7 @@ Raccourcis clavier : flèches pour se déplacer, `Suppr` pour effacer,
 | Commande système | Exécute une commande shell |
 | Page | Change la page du Deck (page précise, suivante ou précédente) |
 | Multi-actions | Enchaîne plusieurs actions avec des pauses |
+| Commande MSFS | Envoie une commande à Microsoft Flight Simulator (SimConnect) |
 | Bascule (2 états) | Alterne entre deux états (ex. train rentré / sorti) : titre, icône, couleur et action propres à chaque état |
 
 ### Touches à bascule
@@ -112,6 +113,34 @@ d'état ; deux pastilles indiquent l'état courant.
 - Préréglages prêts à l'emploi dans la bibliothèque, catégorie *Simulation* :
   train d'atterrissage, feux d'atterrissage, frein de parc (raccourcis par
   défaut de Microsoft Flight Simulator, modifiables).
+
+### Microsoft Flight Simulator 2024 (et 2020)
+
+StreamDeck pilote MSFS directement par **SimConnect**, l'interface officielle
+intégrée au simulateur :
+
+- **aucun fichier de configuration** : quand StreamDeck tourne sur le même PC que
+  le simulateur, la liaison s'établit toute seule dès que MSFS est lancé
+  (indicateur « MSFS connecté » en haut de l'écran de configuration) ;
+- les commandes partent **même si la fenêtre du simulateur n'a pas le focus**, et
+  ne dépendent pas de vos affectations clavier ;
+- les touches à bascule affichent **l'état réel** de l'avion (train sorti, feux
+  allumés, pilote automatique engagé…), même si vous agissez à la souris dans le
+  cockpit.
+
+Dans la bibliothèque, catégorie *MSFS 2024 (SimConnect)* : 37 touches prêtes à
+l'emploi (train, frein de parc, volets, aérofreins, compensateur, feux, modes du
+pilote automatique, batterie, avionique, pitot, ceintures, radios, pause,
+pushback…) avec leurs icônes. L'action « Commande MSFS » donne accès à une
+cinquantaine de commandes, ou à n'importe quel événement SimConnect par son nom.
+L'onglet *Aviation* du choix d'icône propose 36 icônes dédiées.
+
+> Certains avions très détaillés (Fenix, PMDG, FlyByWire…) ont leurs propres
+> systèmes et ignorent une partie des commandes standard ; pour eux, utilisez des
+> raccourcis clavier (catégorie *Simulation (raccourcis clavier)*).
+
+La liaison utilise la bibliothèque [node-simconnect](https://github.com/EvenAR/node-simconnect)
+(licence LGPL-3.0).
 
 ### Touches fusionnées
 
@@ -188,14 +217,20 @@ server/
   app.js              Serveur HTTP : API REST, flux temps réel (SSE), fichiers statiques
   index.js            Lancement du serveur seul (npm start)
   discovery.js        Découverte réseau (UDP 3211) pour l'application Android
+  msfs.js             Liaison Microsoft Flight Simulator (SimConnect)
+  states.js           États des touches à bascule
   store.js            Configuration (validation, écriture atomique)
   actions.js          Exécution des actions
   executors/          Envoi des touches : windows.js (+ agent .ps1), macos.js, linux.js
 shared/keys.js        Définition des touches, commune au serveur et à l'interface
+shared/layout.js      Placement des touches (fusion, orientation), bascules
+shared/msfs.js        Catalogue MSFS : commandes, variables, préréglages
+public/icons/avia/    Icônes aviation (SVG)
 public/               Interface de configuration (index.html) et Deck (deck.html)
 desktop/              Application PC (Electron) : fenêtre, zone de notification
 android/              Application Android (Kotlin) : connexion, découverte, Deck plein écran
 scripts/smoke.mjs     Test de fumée utilisé par l'intégration continue
+scripts/fake-msfs-server.mjs  Serveur relié à un faux simulateur (développement)
 .github/workflows/    Compilation et publication (APK, installateurs)
 test/                 Tests unitaires
 ## Tests

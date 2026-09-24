@@ -5,7 +5,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Types d'action exécutés côté serveur. Les actions de navigation ("page")
 // sont gérées par la surface Deck elle-même.
-export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle'];
+export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle', 'msfs'];
 
 /**
  * Touche à bascule : action envoyée selon l'état courant (0 = état 1, 1 = état 2).
@@ -32,7 +32,8 @@ async function focusTarget(executor, target) {
   await sleep(Number(target.delay ?? 120));
 }
 
-export async function runAction(executor, action, depth = 0) {
+// `ctx.msfs` : liaison SimConnect (actions « msfs »).
+export async function runAction(executor, action, depth = 0, ctx = {}) {
   if (!action || !action.type) throw new Error('Aucune action configurée sur cette touche.');
   if (depth > 5) throw new Error('Multi-action trop imbriquée.');
 
@@ -73,7 +74,7 @@ export async function runAction(executor, action, depth = 0) {
       return sleep(Math.min(Number(action.ms) || 0, 60000));
     case 'multi':
       for (const step of action.steps ?? []) {
-        await runAction(executor, step, depth + 1);
+        await runAction(executor, step, depth + 1, ctx);
         await sleep(30);
       }
       return;
@@ -82,8 +83,12 @@ export async function runAction(executor, action, depth = 0) {
       const inner = toggleAction(action, action.testState ?? 0);
       if (!inner?.type) throw new Error('Aucune action définie pour cet état de la bascule.');
       if (inner.type === 'toggle') throw new Error('Une bascule ne peut pas en contenir une autre.');
-      return runAction(executor, inner, depth + 1);
+      return runAction(executor, inner, depth + 1, ctx);
     }
+    case 'msfs':
+      if (!action.event) throw new Error('Aucun événement MSFS choisi.');
+      if (!ctx.msfs) throw new Error('Liaison MSFS indisponible.');
+      return ctx.msfs.send(action.event, action.value);
     case 'page':
       return; // navigation gérée par le client
     default:

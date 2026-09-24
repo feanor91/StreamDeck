@@ -343,6 +343,19 @@ select optgroup {
   font-size: max(10px, 16cqmin);
   padding: 0 8%;
 }
+/* Icônes fournies (SVG blancs) : dimensionnées comme un emoji, pas en plein cadre. */
+.keyface img.kf-icon.kf-svg {
+  width: 48cqmin;
+  height: 48cqmin;
+  object-fit: contain;
+  transform: translateY(-7%);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+.keyface.no-title img.kf-icon.kf-svg {
+  width: 62cqmin;
+  height: 62cqmin;
+  transform: none;
+}
 .keyface img.kf-icon.contain {
   object-fit: contain;
 }

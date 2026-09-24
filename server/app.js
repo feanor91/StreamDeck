@@ -10,6 +10,7 @@ import { runAction, toggleAction } from './actions.js';
 import { ToggleStates } from './states.js';
 import { stateKey } from '../shared/layout.js';
 import { startDiscovery } from './discovery.js';
+import { createMsfs } from './msfs.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -122,6 +123,8 @@ export async function startDeckServer({
   dryRun = false,
   remoteAdmin = false,
   discovery = true,
+  msfs: msfsEnabled = true,
+  msfsLoader, // tests : remplace le module node-simconnect par une imitation
   log = console,
 } = {}) {
   const store = new Store(dataDir);
@@ -132,6 +135,46 @@ export async function startDeckServer({
   let revision = 0;
 
   const deckUrls = () => lanAddresses().map((a) => `http://${a}:${port}/deck`);
+
+  // --- Microsoft Flight Simulator -------------------------------------------------------
+  // Les bascules dont l'action porte `sync.simvar` prennent leur état dans le simulateur.
+  function syncedKeys() {
+    const out = [];
+    for (const p of store.config?.profiles ?? []) {
+      for (const pg of p.pages) {
+        for (const [index, key] of Object.entries(pg.keys)) {
+          const simvar = key?.action?.type === 'toggle' ? key.action.sync?.simvar : null;
+          if (simvar) out.push({ sk: stateKey(p.id, pg.id, index), simvar: String(simvar).trim().toUpperCase(), invert: !!key.action.sync.invert });
+        }
+      }
+    }
+    return out;
+  }
+
+  function applySimvar(simvar, value) {
+    if (value === null || value === undefined) return;
+    for (const k of syncedKeys()) {
+      if (k.simvar !== simvar) continue;
+      const on = (Number(value) !== 0) !== k.invert ? 1 : 0;
+      if (toggles.get(k.sk) === on) continue;
+      toggles.set(k.sk, on);
+      broadcast('state', { key: k.sk, state: on });
+    }
+  }
+
+  const msfs = createMsfs({
+    log,
+    ...(msfsLoader ? { load: msfsLoader } : {}),
+    onStatus: (s) => broadcast('msfs', s),
+    onValue: applySimvar,
+  });
+
+  function refreshSimWatch() {
+    const keys = syncedKeys();
+    msfs.watch(keys.map((k) => k.simvar));
+    for (const k of keys) applySimvar(k.simvar, msfs.value(k.simvar));
+  }
+  const ctx = { msfs };
 
   function broadcast(event, data) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -162,6 +205,7 @@ export async function startDeckServer({
         }
         revision++;
         broadcast('config', { revision, origin: body.clientId ?? null, config: store.config });
+        refreshSimWatch();
         return send(res, 200, { revision });
       }
 
@@ -179,6 +223,7 @@ export async function startDeckServer({
           addresses: lanAddresses(),
           port,
           layouts: LAYOUTS,
+          msfs: msfsEnabled ? msfs.status : { available: false, connected: false, reason: 'Liaison MSFS désactivée.' },
         });
 
       case 'POST /api/press': {
@@ -199,11 +244,15 @@ export async function startDeckServer({
           if (isToggle) {
             const inner = toggleAction(key.action, toggles.get(sk));
             if (!inner?.type) throw new Error('Aucune action définie pour cet état de la bascule.');
-            await runAction(executor, inner);
-            const state = toggles.set(sk, !toggles.get(sk));
-            broadcast('state', { key: sk, state });
+            await runAction(executor, inner, 0, ctx);
+            // Bascule synchronisée avec MSFS : l'état viendra du simulateur lui-même.
+            const simSynced = key.action.sync?.simvar && msfs.status.connected;
+            if (!simSynced) {
+              const state = toggles.set(sk, !toggles.get(sk));
+              broadcast('state', { key: sk, state });
+            }
           } else {
-            await runAction(executor, key.action);
+            await runAction(executor, key.action, 0, ctx);
           }
           broadcast('press', { profileId, pageId, index, ok: true });
           return send(res, 200, { ok: true, ms: Date.now() - started, state: isToggle ? toggles.get(sk) : undefined });
@@ -217,7 +266,7 @@ export async function startDeckServer({
         requireAdmin(req);
         const { action } = await readJson(req);
         try {
-          await runAction(executor, action);
+          await runAction(executor, action, 0, ctx);
         } catch (e) {
           throw Object.assign(e, { status: 422 });
         }
@@ -266,6 +315,7 @@ export async function startDeckServer({
 
   await store.load();
   await toggles.load();
+  refreshSimWatch();
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {
@@ -275,6 +325,7 @@ export async function startDeckServer({
   });
 
   const disco = discovery ? startDiscovery({ port, version: VERSION, log }) : null;
+  if (msfsEnabled) msfs.start();
 
   const ready = executor.check().then((s) => {
     executorStatus = s;
@@ -290,6 +341,7 @@ export async function startDeckServer({
     deckUrls,
     async close() {
       disco?.close();
+      msfs.close();
       await toggles.flush().catch(() => {});
       for (const res of clients) res.end();
       clients.clear();

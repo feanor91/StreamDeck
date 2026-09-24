@@ -1,7 +1,7 @@
 {
   "name": "streamdeck-clone",
   "productName": "StreamDeck",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Clone logiciel de Stream Deck : serveur PC, application de configuration et client Android.",
   "author": "StreamDeck",
   "license": "MIT",
@@ -19,6 +19,9 @@
   "engines": {
     "node": ">=18"
   },
+  "dependencies": {
+    "node-simconnect": "^4.2.0"
+  },
   "devDependencies": {
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3"
@@ -34,7 +37,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "server/executors/*.ps1"
+      "server/executors/*.ps1",
+      "node_modules/regedit/vbs/**"
     ],
     "directories": {
       "output": "dist"

@@ -1,6 +1,7 @@
 import { formatHotkey, MEDIA_ACTIONS } from '/shared/keys.js';
 import { h } from './dom.js';
 import { faceFor } from '/shared/layout.js';
+import { MSFS_PRESETS, MSFS_EVENT_LABELS } from '/shared/msfs.js';
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -80,6 +81,16 @@ export const ACTION_TYPES = {
       return ctx?.pages?.find((p) => p.id === a.pageId)?.name ?? 'Aucune page choisie';
     },
   },
+  msfs: {
+    label: 'MSFS',
+    long: 'Commande MSFS',
+    desc: 'Envoie une commande à Flight Simulator',
+    icon: '🛩️',
+    color: '#0ea5e9',
+    create: () => ({ type: 'msfs', event: '', value: 0 }),
+    face: { icon: '/public/icons/avia/plane.svg', color: '#0c4a6e' },
+    summary: (a) => (a.event ? MSFS_EVENT_LABELS[a.event] ?? a.event : 'Aucune commande choisie'),
+  },
   toggle: {
     label: 'Bascule',
     long: 'Bascule (2 états)',
@@ -154,7 +165,11 @@ export const LIBRARY = [
     items: [{ type: 'multi' }, { type: 'toggle' }],
   },
   {
-    group: 'Simulation',
+    group: 'MSFS 2024 (SimConnect)',
+    items: [{ type: 'msfs' }, ...MSFS_PRESETS],
+  },
+  {
+    group: 'Simulation (raccourcis clavier)',
     items: [
       {
         type: 'toggle',
@@ -206,6 +221,15 @@ export const LIBRARY = [
 ];
 
 export function libraryItemInfo(item) {
+  if (item.action) {
+    // Préréglage complet (ex. MSFS) : action et apparence fournies.
+    return {
+      label: item.label,
+      desc: item.action.type === 'toggle' ? 'MSFS · état synchronisé' : 'MSFS · commande',
+      icon: item.face.icon,
+      color: '#0ea5e9',
+    };
+  }
   const t = ACTION_TYPES[item.type];
   return {
     label: item.label ?? t.long,
@@ -216,6 +240,10 @@ export function libraryItemInfo(item) {
 }
 
 export function createFromLibrary(item) {
+  if (item.action) {
+    const copy = JSON.parse(JSON.stringify(item));
+    return { action: copy.action, face: copy.alt ? { ...copy.face, alt: copy.alt } : copy.face };
+  }
   const t = ACTION_TYPES[item.type];
   const face = { title: item.title ?? t.face.title ?? t.label, icon: item.icon ?? t.face.icon, color: item.color ?? t.face.color };
   const alt = item.alt ?? t.alt;
@@ -236,6 +264,9 @@ export const EMOJIS = (
   '🚀 🌐 🔍 🔗 📊 📈 🗂️ 🗓️ ⏰ ⏱️ ☕ 🍕 💡 🔥 ⭐ ❤️ 👍 👎 👏 🎉 ✅ ❌ ⚠️ ❓ 💯 ➕ ➖ ↩️ ↪️ ⬅️ ➡️ ⬆️ ⬇️ 🏠 🌙 ☀️ 🌈 ⚡ 🐱 🐶 🦊 🤖 👾 😀 😂 😎 🤔 😴'
 ).split(' ');
 
+// Icône fournie par l'application (ex. /public/icons/avia/gear-down.svg).
+export const isIconPath = (icon) => typeof icon === 'string' && /^\/public\/icons\/[\w/-]+\.svg$/.test(icon);
+
 // Construit le rendu visuel d'une touche (utilisé par la gestion et le Deck).
 // `state` : état courant d'une touche à bascule (0 ou 1).
 export function keyFace(rawKey, state = 0) {
@@ -249,6 +280,7 @@ export function keyFace(rawKey, state = 0) {
   el.style.setProperty('--key-color', key.color || '#1c202a');
   if (hasIcon) {
     if (key.icon.startsWith('data:')) el.append(h('img', { class: 'kf-icon', src: key.icon, alt: '', draggable: 'false' }));
+    else if (isIconPath(key.icon)) el.append(h('img', { class: 'kf-icon kf-svg', src: key.icon, alt: '', draggable: 'false' }));
     else el.append(h('span', { class: 'kf-icon' }, key.icon));
   }
   if (showTitle) el.append(h('span', { class: 'kf-title' }, key.title));

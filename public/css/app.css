@@ -1024,3 +1024,43 @@ body {
   background: var(--accent);
   color: #fff;
 }
+
+.lib-item .lib-icon img {
+  width: 22px;
+  height: 22px;
+}
+
+/* Indicateur MSFS : discret quand le simulateur n'est pas lancé */
+.status-pill[data-state='off'] {
+  color: var(--faint);
+}
+.status-pill[data-state='off'] i {
+  background: var(--faint);
+}
+
+/* Grille d'icônes aviation */
+.avia-grid {
+  grid-template-columns: repeat(6, 1fr);
+}
+.avia-grid button {
+  display: grid;
+  place-items: center;
+  background: #262b38;
+}
+.avia-grid button img {
+  width: 70%;
+  height: 70%;
+}
+.note.info.ok {
+  background: rgba(52, 211, 153, 0.06);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+.note.info.ok .i {
+  color: var(--ok);
+}
+.sim-sync {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+}

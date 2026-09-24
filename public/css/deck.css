@@ -275,3 +275,12 @@ body {
 .dkey .keyface img.kf-icon {
   object-fit: contain;
 }
+/* Icônes SVG sur grande tablette : même plafond que les emojis. */
+.dkey .keyface img.kf-icon.kf-svg {
+  width: min(48cqmin, 140px);
+  height: min(48cqmin, 140px);
+}
+.dkey .keyface.no-title img.kf-icon.kf-svg {
+  width: min(62cqmin, 170px);
+  height: min(62cqmin, 170px);
+}

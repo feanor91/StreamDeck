@@ -4,6 +4,7 @@
 import { app, BrowserWindow, Tray, Menu, shell, dialog, clipboard, nativeImage, Notification } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { startDeckServer, lanAddresses } from '../server/app.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -25,8 +26,19 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(boot);
 }
 
+// La liaison MSFS lit le registre Windows via le module « regedit », dont les scripts
+// VBS doivent être lus hors de l'archive asar une fois l'application installée.
+function prepareRegistryHelper() {
+  if (!app.isPackaged || process.platform !== 'win32') return;
+  try {
+    const regedit = createRequire(import.meta.url)('regedit');
+    regedit.setExternalVBSLocation(path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'regedit', 'vbs'));
+  } catch {}
+}
+
 async function boot() {
   app.setAppUserModelId('com.streamdeck.clone');
+  prepareRegistryHelper();
   try {
     deck = await startDeckServer({ port: PORT, dataDir: path.join(app.getPath('userData'), 'data') });
   } catch (e) {
