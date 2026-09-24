@@ -56,8 +56,27 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Préparer la clé de signature
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.release != '' }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/streamdeck.jks"
+            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/streamdeck.jks" >> "$GITHUB_ENV"
+            echo "APK signé avec la clé du dépôt."
+          elif [ "$RELEASE" = "true" ]; then
+            echo "::error::Secret ANDROID_KEYSTORE_BASE64 absent : une version publiée doit être signée avec la clé fixe (voir README)."
+            exit 1
+          else
+            echo "::warning::Pas de clé de signature : APK signé avec une clé de débogage temporaire."
+          fi
       - name: Compiler l'APK
         working-directory: android
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
@@ -66,6 +85,10 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           mkdir -p out
           cp android/app/build/outputs/apk/release/app-release.apk "out/StreamDeck-Android-$VERSION.apk"
+      - name: Vérifier la signature de l'APK
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$APKSIGNER" verify --verbose --print-certs out/*.apk | grep -E "Verified using v[12]|certificate SHA-256|DN:"
       - uses: actions/upload-artifact@v4
         with:
           name: StreamDeck-Android

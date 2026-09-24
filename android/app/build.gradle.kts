@@ -11,16 +11,31 @@ android {
         applicationId = "com.streamdeck.client"
         minSdk = 24 // Android 7.0
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "0.6.1"
+    }
+
+    // Clé de signature fournie par l'environnement (secrets GitHub dans la CI) :
+    // toutes les versions publiées portent la même signature et s'installent
+    // par-dessus la précédente. Sans ces variables, la clé de débogage est utilisée.
+    val keystore = System.getenv("SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }?.let { file(it) }
+    signingConfigs {
+        if (keystore != null) {
+            create("deck") {
+                storeFile = keystore
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signé avec la clé de débogage : l'APK s'installe directement sur le téléphone.
-            // Pour une publication sur le Play Store, remplacez par votre propre clé.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (keystore != null) "deck" else "debug")
         }
     }
 
