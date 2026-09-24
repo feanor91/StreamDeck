@@ -114,3 +114,16 @@ test('contrôles continus : conversions et affichage', async () => {
   assert.equal(notchDelta(0, 0.5, 10), 5);
   assert.equal(notchDelta(0.8, 0.2, 10), -6);
 });
+
+test('afficheurs type FCU : zéros, signe, Mach, tirets, mode managé, STD', async () => {
+  const { formatDisplay } = await import('../shared/controls.js');
+  assert.equal(formatDisplay(45, { pad: 3 }), '045');
+  assert.equal(formatDisplay(1500, { sign: true }), '+1500');
+  assert.equal(formatDisplay(-700, { sign: true }), '−700');
+  assert.equal(formatDisplay(0.78, { machAuto: true }), '0,78');
+  assert.equal(formatDisplay(250, { machAuto: true }), '250');
+  assert.equal(formatDisplay(5000, { pad: 5 }), '05000');
+  assert.equal(formatDisplay(180, { pad: 3 }, { dashes: true, managed: true }), '---•');
+  assert.equal(formatDisplay(100, { pad: 3 }, { managed: true }), '100•');
+  assert.equal(formatDisplay(1013, {}, { std: true }), 'STD');
+});

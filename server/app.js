@@ -11,6 +11,7 @@ import { ToggleStates } from './states.js';
 import { stateKey } from '../shared/layout.js';
 import { startDiscovery } from './discovery.js';
 import { createMsfs } from './msfs.js';
+import { normalizeVar, defaultUnit } from '../shared/msfs.js';
 import { clamp, levelToValue, valueToLevel, notchDelta, MAX_STEPS } from '../shared/controls.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -145,20 +146,25 @@ export async function startDeckServer({
   //  - bouton rotatif avec `display`   → valeur affichée (ex. cap sélecté) ;
   //  - curseur avec `sync`             → position du curseur.
   const liveValues = {}; // touche → dernière valeur affichée
+  const liveFlags = {}; // touche → { dashes, managed, std } (afficheurs type FCU)
   function simBindings() {
     const out = [];
+    const src = (o, onOff) =>
+      o.input ? { input: o.input } : { simvar: normalizeVar(o.simvar), unit: o.unit || defaultUnit(o.simvar, onOff) };
     for (const p of store.config?.profiles ?? []) {
       for (const pg of p.pages) {
         for (const [index, key] of Object.entries(pg.keys)) {
           const a = key?.action;
           const sk = stateKey(p.id, pg.id, index);
-          const up = (v) => String(v).trim().toUpperCase();
-          if (a?.type === 'toggle' && a.sync?.simvar) {
-            out.push({ sk, kind: 'toggle', simvar: up(a.sync.simvar), unit: 'Bool', invert: !!a.sync.invert });
-          } else if (a?.type === 'dial' && a.display?.simvar) {
-            out.push({ sk, kind: 'value', simvar: up(a.display.simvar), unit: a.display.unit || 'number' });
-          } else if (a?.type === 'slider' && a.sync?.simvar) {
-            out.push({ sk, kind: 'level', simvar: up(a.sync.simvar), unit: a.sync.unit || 'percent', min: a.sync.min ?? 0, max: a.sync.max ?? 100 });
+          if (a?.type === 'toggle' && (a.sync?.simvar || a.sync?.input)) {
+            out.push({ sk, kind: 'toggle', ...src(a.sync, true), invert: !!a.sync.invert, equals: a.sync.equals });
+          } else if (a?.type === 'dial' && (a.display?.simvar || a.display?.input)) {
+            out.push({ sk, kind: 'value', ...src(a.display, false) });
+            for (const flag of ['dashes', 'managed', 'stdVar']) {
+              if (a.display[flag]) out.push({ sk, kind: 'flag', flag, simvar: normalizeVar(a.display[flag]), unit: 'number' });
+            }
+          } else if (a?.type === 'slider' && (a.sync?.simvar || a.sync?.input)) {
+            out.push({ sk, kind: 'level', ...src(a.sync, false), min: a.sync.min ?? 0, max: a.sync.max ?? 100 });
           }
         }
       }
@@ -166,25 +172,44 @@ export async function startDeckServer({
     return out;
   }
 
+  function applyBinding(b, value) {
+    if (b.kind === 'toggle') {
+      const v = Number(value);
+      const hit = b.equals !== undefined && b.equals !== null && b.equals !== '' ? Math.abs(v - Number(b.equals)) < 1e-6 : v !== 0;
+      const on = hit !== b.invert ? 1 : 0;
+      if (toggles.get(b.sk) === on) return;
+      toggles.set(b.sk, on);
+      broadcast('state', { key: b.sk, state: on });
+    } else if (b.kind === 'value') {
+      if (liveValues[b.sk] === value) return;
+      liveValues[b.sk] = value;
+      broadcast('value', { key: b.sk, value, flags: liveFlags[b.sk] ?? null });
+    } else if (b.kind === 'flag') {
+      const flags = (liveFlags[b.sk] ??= {});
+      const name = b.flag === 'stdVar' ? 'std' : b.flag;
+      // Calage « STD » : mode 0 de l'afficheur baro FlyByWire.
+      const on = name === 'std' ? Number(value) === 0 : Number(value) !== 0;
+      if (flags[name] === on) return;
+      flags[name] = on;
+      broadcast('value', { key: b.sk, value: liveValues[b.sk] ?? null, flags });
+    } else {
+      const level = valueToLevel(value, b.min, b.max);
+      if (Math.abs((toggles.getLevel(b.sk) ?? -1) - level) < 0.002) return;
+      broadcast('level', { key: b.sk, level: toggles.setLevel(b.sk, level) });
+    }
+  }
+
   function applySimvar(simvar, value, unit = 'Bool') {
     if (value === null || value === undefined) return;
     for (const b of simBindings()) {
-      if (b.simvar !== simvar || b.unit.toLowerCase() !== String(unit).toLowerCase()) continue;
-      if (b.kind === 'toggle') {
-        const on = (Number(value) !== 0) !== b.invert ? 1 : 0;
-        if (toggles.get(b.sk) === on) continue;
-        toggles.set(b.sk, on);
-        broadcast('state', { key: b.sk, state: on });
-      } else if (b.kind === 'value') {
-        if (liveValues[b.sk] === value) continue;
-        liveValues[b.sk] = value;
-        broadcast('value', { key: b.sk, value });
-      } else {
-        const level = valueToLevel(value, b.min, b.max);
-        if (Math.abs((toggles.getLevel(b.sk) ?? -1) - level) < 0.002) continue;
-        broadcast('level', { key: b.sk, level: toggles.setLevel(b.sk, level) });
-      }
+      if (b.input || b.simvar !== simvar || b.unit.toLowerCase() !== String(unit).toLowerCase()) continue;
+      applyBinding(b, value);
     }
+  }
+
+  function applyInput(name, value) {
+    if (value === null || value === undefined || typeof value === 'string') return;
+    for (const b of simBindings()) if (b.input === name) applyBinding(b, value);
   }
 
   const msfs = createMsfs({
@@ -192,12 +217,16 @@ export async function startDeckServer({
     ...(msfsLoader ? { load: msfsLoader } : {}),
     onStatus: (s) => broadcast('msfs', s),
     onValue: applySimvar,
+    onInput: applyInput,
   });
 
   function refreshSimWatch() {
     const bindings = simBindings();
-    msfs.watch(bindings.map(({ simvar, unit }) => ({ simvar, unit })));
-    for (const b of bindings) applySimvar(b.simvar, msfs.value(b.simvar, b.unit), b.unit);
+    msfs.watch(bindings.map((b) => (b.input ? { input: b.input } : { simvar: b.simvar, unit: b.unit })));
+    for (const b of bindings) {
+      const v = b.input ? msfs.inputValue(b.input) : msfs.value(b.simvar, b.unit);
+      if (v !== null && v !== undefined) applyBinding(b, v);
+    }
   }
 
   // Bouton rotatif et curseur : un geste (crans, position) ou un appui.
@@ -206,6 +235,12 @@ export async function startDeckServer({
     if (!input || input.kind === 'press') {
       if (!a.press?.type) return { ok: true };
       await runAction(executor, a.press, 0, ctx);
+      return { ok: true };
+    }
+    // Appui long : sur un bouton du FCU Airbus, « tirer » (mode sélecté).
+    if (input.kind === 'hold') {
+      if (!a.hold?.type) return { ok: true };
+      await runAction(executor, a.hold, 0, ctx);
       return { ok: true };
     }
     if (a.type === 'dial' && input.kind === 'dial') {
@@ -259,7 +294,7 @@ export async function startDeckServer({
     checkRequestOrigin(req);
     switch (`${req.method} ${pathname}`) {
       case 'GET /api/config':
-        return send(res, 200, { revision, config: store.config, states: toggles.all(), levels: toggles.levels(), values: liveValues });
+        return send(res, 200, { revision, config: store.config, states: toggles.all(), levels: toggles.levels(), values: liveValues, flags: liveFlags });
 
       case 'PUT /api/config': {
         requireAdmin(req);
@@ -347,6 +382,29 @@ export async function startDeckServer({
           throw Object.assign(e, { status: 422 });
         }
         return send(res, 200, { ok: true });
+      }
+
+      // Explorateur MSFS : commandes de cockpit de l'avion chargé, lecture d'une valeur.
+      case 'GET /api/msfs/inputs': {
+        requireAdmin(req);
+        const refresh = new URL(req.url, 'http://x').searchParams.has('refresh');
+        try {
+          const inputs = await msfs.inputEvents(refresh);
+          return send(res, 200, { aircraft: msfs.status.aircraft, inputs });
+        } catch (e) {
+          throw Object.assign(e, { status: 409 });
+        }
+      }
+
+      case 'POST /api/msfs/read': {
+        requireAdmin(req);
+        const body = await readJson(req);
+        try {
+          const value = body.input ? await msfs.readInput(body.input) : await msfs.readVar(body.var, body.unit || 'number');
+          return send(res, 200, { value });
+        } catch (e) {
+          throw Object.assign(e, { status: 409 });
+        }
       }
 
       case 'GET /api/windows': {

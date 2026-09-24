@@ -6,7 +6,7 @@ import {
   libraryItemInfo, createFromLibrary, keyFace, isMac, isIconPath,
 } from './catalog.js';
 import { computeCells, placementError, findFreeSlot, keySpan, stateKey } from '/shared/layout.js';
-import { MSFS_EVENTS, MSFS_EVENT_LABELS, MSFS_SIMVARS, MSFS_NUMERIC_SIMVARS, AVIA_ICONS } from '/shared/msfs.js';
+import { MSFS_EVENTS, MSFS_EVENT_LABELS, MSFS_SIMVARS, MSFS_NUMERIC_SIMVARS, MSFS_UNITS, AVIA_ICONS, FBW_EVENTS, FBW_PRESETS, isLocalVar } from '/shared/msfs.js';
 
 const $ = (id) => document.getElementById(id);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -28,6 +28,8 @@ const state = {
   toggles: {}, // états courants des bascules (clé : profil/page/index)
   levels: {}, // positions des curseurs (0..1)
   values: {}, // valeurs affichées par les boutons rotatifs (lues dans MSFS)
+  flags: {}, // tirets, point « managé », STD des afficheurs type FCU
+  inputEvents: null, // commandes de cockpit (Input Events) de l'avion chargé
   connected: false,
 };
 
@@ -44,7 +46,7 @@ const toggleState = (i) => (state.toggles[stateKey(profile().id, page().id, i)] 
 function liveFor(i, cell) {
   const sk = stateKey(profile().id, page().id, i);
   const { w, h: hh } = cell ?? spanOf(keyAt(i));
-  return { value: state.values[sk], level: state.levels[sk] ?? 0, angle: 0, vertical: hh >= w };
+  return { value: state.values[sk], flags: state.flags[sk], level: state.levels[sk] ?? 0, angle: 0, vertical: hh >= w };
 }
 const spanOf = (key) => ({ w: Math.max(1, Number(key?.span?.w) || 1), h: Math.max(1, Number(key?.span?.h) || 1) });
 
@@ -904,109 +906,300 @@ function compactTarget(getAction, tag) {
 // ---------------------------------------------------------------------------
 function msfsNote() {
   const m = state.status?.msfs;
-  if (m?.connected) return h('div', { class: 'note info ok' }, icon('check'), h('span', {}, `Connecté à ${m.simName || 'Flight Simulator'}.`));
+  if (m?.connected) {
+    return h('div', { class: 'note info ok' }, icon('check'),
+      h('span', {}, `Connecté à ${m.simName || 'Flight Simulator'}${m.aircraft ? ` · avion : ${m.aircraft}` : ''}.`));
+  }
   return h('div', { class: 'note' }, icon('info'),
     h('span', {}, `${m?.reason ?? 'Simulateur non détecté.'} Les commandes partiront dès que MSFS sera lancé, sans réglage à faire : la liaison SimConnect est intégrée au simulateur.`));
 }
 
+// Listes de suggestions (variables connues, Input Events de l'avion chargé).
+function ensureDatalists() {
+  if (!document.getElementById('simvarList')) {
+    const known = [
+      ...MSFS_SIMVARS.map(([v, label]) => [v, label]),
+      ...MSFS_NUMERIC_SIMVARS.map(([v, , label]) => [v, label]),
+      ...FBW_PRESETS.flatMap((p) => [p.action.sync?.simvar, p.action.display?.simvar].filter(Boolean).map((v) => [v, `A320 — ${p.label}`])),
+    ];
+    const seen = new Set();
+    document.body.append(
+      h('datalist', { id: 'simvarList' }, ...known.filter(([v]) => !seen.has(v) && seen.add(v)).map(([v, label]) => h('option', { value: v }, label))),
+    );
+  }
+  let inputs = document.getElementById('inputEventList');
+  if (!inputs) {
+    inputs = h('datalist', { id: 'inputEventList' });
+    document.body.append(inputs);
+  }
+  inputs.replaceChildren(...(state.inputEvents ?? []).map((i) => h('option', { value: i.name })));
+}
+
+const textInput = (value, placeholder, oninput, extra = {}) =>
+  h('input', { class: 'mono', value: value ?? '', placeholder, spellcheck: 'false', oninput, ...extra });
+
+/**
+ * Source d'une valeur lue dans le simulateur : variable (SimVar ou « L: ») ou Input Event.
+ * `obj()` renvoie l'objet à éditer ({ simvar, unit } ou { input }), `tag` groupe l'historique.
+ */
+function simSourceFields(obj, tag, { unitDefault = 'number', equals = false } = {}) {
+  ensureDatalists();
+  const o = obj();
+  const isInput = !!o.input;
+  const set = (patch, opts = { tag: `${tag}:src`, render: 'key' }) => commit(() => Object.assign(obj(), patch), opts);
+  return [
+    h(
+      'div',
+      { class: 'segmented' },
+      h('button', { class: isInput ? '' : 'on', onclick: () => commit(() => { const x = obj(); delete x.input; x.simvar ??= ''; x.unit ??= unitDefault; }) }, 'Variable'),
+      h('button', { class: isInput ? 'on' : '', onclick: () => commit(() => { const x = obj(); delete x.simvar; delete x.unit; x.input ??= ''; }) }, 'Input Event (MSFS 2024)'),
+    ),
+    isInput
+      ? h('div', { class: 'field' },
+          h('div', { class: 'input-with-btn' },
+            textInput(o.input, 'ex. LIGHTING_LANDING_1', (e) => set({ input: e.target.value.trim() }), { list: 'inputEventList' }),
+            h('button', { class: 'btn icon-only', title: 'Parcourir les commandes de l’avion chargé', onclick: () => openExplorer((name) => commit(() => (obj().input = name))) }, icon('target')),
+          ),
+          h('span', { class: 'hint' }, 'Commande de cockpit de l’avion chargé : utilisez le bouton pour parcourir la liste.'))
+      : h('div', { class: 'row' },
+          h('label', { class: 'field', style: { flex: 2 } }, h('span', {}, 'Variable'),
+            textInput(o.simvar, 'ex. L:A32NX_FCU_AP_1_LIGHT_ON', (e) => set({ simvar: e.target.value.trim() }), { list: 'simvarList' })),
+          h('label', { class: 'field' }, h('span', {}, 'Unité'),
+            h('select', { onchange: (e) => set({ unit: e.target.value }, {}) },
+              ...MSFS_UNITS.map((u) => h('option', { value: u, selected: (o.unit || (isLocalVar(o.simvar) ? 'number' : unitDefault)) === u }, u))))),
+    equals
+      ? h('div', { class: 'row' },
+          h('label', { class: 'field' }, h('span', {}, 'État 2 si la valeur vaut (facultatif)'),
+            h('input', { type: 'number', value: o.equals ?? '', placeholder: 'non nulle', oninput: (e) => set({ equals: e.target.value === '' ? undefined : Number(e.target.value) }) })),
+          h('label', { class: 'switch', style: { alignSelf: 'end', paddingBottom: '9px' } },
+            h('input', { type: 'checkbox', checked: !!o.invert, onchange: (e) => commit(() => (obj().invert = e.target.checked)) }), 'Inverser'))
+      : null,
+  ];
+}
+
 function msfsFields(getAction, tag) {
   const a = getAction();
-  const known = !!MSFS_EVENT_LABELS[a.event];
-  const custom = !!a.event && !known;
-  const select = h(
-    'select',
-    {
-      onchange: (e) =>
-        commit(() => {
-          const v = e.target.value;
-          getAction().event = v === '@custom' ? (known ? '' : getAction().event) : v;
-          getAction().custom = v === '@custom';
+  const kind = a.kind ?? 'event';
+  const kinds = [['event', 'Commande'], ['var', 'Variable'], ['input', 'Input Event']];
+  const head = [
+    h('div', { class: 'segmented' },
+      ...kinds.map(([id, label]) => h('button', {
+        class: kind === id ? 'on' : '',
+        onclick: () => commit(() => {
+          const x = getAction();
+          x.kind = id;
+          if (id !== 'event') x.op ??= 'set';
         }),
-    },
-    h('option', { value: '', disabled: true, selected: !a.event && !a.custom }, 'Choisir une commande…'),
-    ...MSFS_EVENTS.map((g) =>
-      h('optgroup', { label: g.group }, ...g.items.map(([id, label]) => h('option', { value: id, selected: id === a.event }, label))),
-    ),
-    h('optgroup', { label: 'Avancé' }, h('option', { value: '@custom', selected: custom || (a.custom && !a.event) }, 'Autre événement (saisie libre)…')),
-  );
-  return [
-    h('label', { class: 'field' }, h('span', {}, 'Commande'), select),
-    custom || a.custom
-      ? h(
-          'label',
-          { class: 'field' },
-          h('span', {}, 'Nom de l’événement SimConnect'),
-          h('input', {
-            class: 'mono',
-            value: a.event ?? '',
-            placeholder: 'ex. TOGGLE_WATER_RUDDER',
-            spellcheck: 'false',
-            oninput: (e) => commit(() => (getAction().event = e.target.value.trim().toUpperCase()), { tag: `${tag}:event`, render: 'key' }),
+      }, label))),
+  ];
+
+  if (kind === 'event') {
+    const known = !!MSFS_EVENT_LABELS[a.event];
+    const custom = !!a.event && !known;
+    const groups = [...MSFS_EVENTS, ...FBW_EVENTS];
+    const select = h(
+      'select',
+      {
+        onchange: (e) =>
+          commit(() => {
+            const v = e.target.value;
+            getAction().event = v === '@custom' ? (known ? '' : getAction().event) : v;
+            getAction().custom = v === '@custom';
           }),
-          h('span', { class: 'hint' }, 'Liste complète : « Event IDs » dans la documentation du SDK MSFS.'),
-        )
+      },
+      h('option', { value: '', disabled: true, selected: !a.event && !a.custom }, 'Choisir une commande…'),
+      ...groups.map((g) => h('optgroup', { label: g.group }, ...g.items.map(([id, label]) => h('option', { value: id, selected: id === a.event }, label)))),
+      h('optgroup', { label: 'Avancé' }, h('option', { value: '@custom', selected: custom || (a.custom && !a.event) }, 'Autre événement (saisie libre)…')),
+    );
+    return [
+      ...head,
+      h('label', { class: 'field' }, h('span', {}, 'Commande'), select),
+      custom || a.custom
+        ? h('label', { class: 'field' }, h('span', {}, 'Nom de l’événement SimConnect'),
+            textInput(a.event, 'ex. TOGGLE_WATER_RUDDER ou A32NX.FCU_EXPED_PUSH', (e) => commit(() => (getAction().event = e.target.value.trim().toUpperCase()), { tag: `${tag}:event`, render: 'key' })),
+            h('span', { class: 'hint' }, 'Événements standard (SDK MSFS) ou personnalisés d’un avion (ex. « A32NX.… » de FlyByWire).'))
+        : null,
+      h('label', { class: 'field' }, h('span', {}, 'Valeur (facultatif)'),
+        h('input', { type: 'number', value: a.value ?? 0, oninput: (e) => commit(() => (getAction().value = Number(e.target.value) || 0), { tag: `${tag}:value`, render: 'key' }) }),
+        h('span', { class: 'hint' }, 'Utile pour les commandes qui attendent un paramètre (ex. HEADING_BUG_SET : cap en degrés).')),
+      msfsNote(),
+    ];
+  }
+
+  // Variable ou Input Event : opération sur la valeur.
+  const op = a.op ?? 'set';
+  const num = (label, prop, placeholder = '') =>
+    h('label', { class: 'field' }, h('span', {}, label),
+      h('input', { type: 'number', value: a[prop] ?? '', placeholder, oninput: (e) => commit(() => (getAction()[prop] = e.target.value === '' ? undefined : Number(e.target.value)), { tag: `${tag}:${prop}`, render: 'key' }) }));
+  const target =
+    kind === 'var'
+      ? h('div', { class: 'row' },
+          h('label', { class: 'field', style: { flex: 2 } }, h('span', {}, 'Variable à écrire'),
+            (ensureDatalists(), textInput(a.var, 'ex. L:A32NX_… ou L:…', (e) => commit(() => (getAction().var = e.target.value.trim()), { tag: `${tag}:var`, render: 'key' }), { list: 'simvarList' }))),
+          h('label', { class: 'field' }, h('span', {}, 'Unité'),
+            h('select', { onchange: (e) => commit(() => (getAction().unit = e.target.value)) },
+              ...MSFS_UNITS.map((u) => h('option', { value: u, selected: (a.unit || 'number') === u }, u)))))
+      : h('div', { class: 'field' }, h('span', {}, 'Commande de cockpit (Input Event)'),
+          h('div', { class: 'input-with-btn' },
+            (ensureDatalists(), textInput(a.input, 'ex. LIGHTING_LANDING_1', (e) => commit(() => (getAction().input = e.target.value.trim()), { tag: `${tag}:input`, render: 'key' }), { list: 'inputEventList' })),
+            h('button', { class: 'btn icon-only', title: 'Parcourir les commandes de l’avion chargé', onclick: () => openExplorer((name) => commit(() => (getAction().input = name))) }, icon('target'))));
+  return [
+    ...head,
+    target,
+    h('div', { class: 'segmented' },
+      ...[['set', 'Fixer'], ['toggle', 'Basculer'], ['add', 'Ajouter']].map(([id, label]) =>
+        h('button', { class: op === id ? 'on' : '', onclick: () => commit(() => (getAction().op = id)) }, label))),
+    op === 'set' ? num('Valeur', 'value', '0') : null,
+    op === 'toggle' ? h('div', { class: 'row' }, num('Valeur « allumé »', 'value', '1'), num('Valeur « éteint »', 'off', '0')) : null,
+    op === 'add'
+      ? h('div', { class: 'field' },
+          h('div', { class: 'row' }, num('Pas', 'value', '1'), num('Minimum', 'min'), num('Maximum', 'max')),
+          h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: !!a.wrap, onchange: (e) => commit(() => (getAction().wrap = e.target.checked)) }), 'Boucler (ex. cap 360 → 1)'))
       : null,
-    h(
-      'label',
-      { class: 'field' },
-      h('span', {}, 'Valeur (facultatif)'),
-      h('input', {
-        type: 'number',
-        value: a.value ?? 0,
-        oninput: (e) => commit(() => (getAction().value = Number(e.target.value) || 0), { tag: `${tag}:value`, render: 'key' }),
-      }),
-      h('span', { class: 'hint' }, 'Utile pour les commandes qui attendent un paramètre (ex. HEADING_BUG_SET : cap en degrés).'),
-    ),
     msfsNote(),
   ];
 }
 
-// Bascule : état lu dans une variable du simulateur (état réel, même si on agit dans le cockpit).
+// ---------------------------------------------------------------------------
+// Explorateur MSFS : commandes de cockpit (Input Events) de l'avion chargé et
+// lecture en direct d'une variable. Sert à découvrir les commandes d'un avion
+// non documenté (ex. le Rafale). `onPick` : choisir une commande pour une touche.
+// ---------------------------------------------------------------------------
+function openExplorer(onPick = null) {
+  document.querySelector('.explorer-backdrop')?.remove();
+  const list = h('div', { class: 'explorer-list' });
+  const search = h('input', { class: 'mono', placeholder: 'Rechercher (ex. gear, light, master, hdg…)', spellcheck: 'false', autocomplete: 'off' });
+  const info = h('div', { class: 'explorer-info' });
+  const values = new Map();
+  const close = () => {
+    backdrop.remove();
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = (e) => e.key === 'Escape' && (e.stopPropagation(), close());
+
+  const render = () => {
+    const q = search.value.trim().toLowerCase();
+    const items = (state.inputEvents ?? []).filter((i) => !q || i.name.toLowerCase().includes(q));
+    info.textContent = state.inputEvents
+      ? `${items.length} commande(s) sur ${state.inputEvents.length}${state.status?.msfs?.aircraft ? ` · ${state.status.msfs.aircraft}` : ''}`
+      : '';
+    list.replaceChildren(
+      ...items.slice(0, 300).map((i) => {
+        const val = h('span', { class: 'explorer-value' }, values.has(i.name) ? String(values.get(i.name)) : '');
+        return h(
+          'div',
+          { class: 'explorer-row' },
+          h('code', {}, i.name),
+          val,
+          h('button', {
+            class: 'btn small ghost',
+            title: 'Lire la valeur actuelle',
+            onclick: async () => {
+              try {
+                const { value } = await api.msfsRead({ input: i.name });
+                values.set(i.name, value ?? '—');
+                val.textContent = String(value ?? '—');
+              } catch (e) {
+                toast(e.message, 'err');
+              }
+            },
+          }, 'Lire'),
+          onPick
+            ? h('button', { class: 'btn small primary', onclick: () => { onPick(i.name); close(); } }, 'Choisir')
+            : h('button', { class: 'btn small', title: 'Copier le nom', onclick: () => navigator.clipboard?.writeText(i.name).then(() => toast('Nom copié', 'ok')) }, icon('copy')),
+        );
+      }),
+      ...(items.length > 300 ? [h('div', { class: 'explorer-more' }, `… ${items.length - 300} autres : affinez la recherche.`)] : []),
+      ...(state.inputEvents && !items.length ? [h('div', { class: 'explorer-more' }, 'Aucune commande ne correspond.')] : []),
+    );
+  };
+
+  const load = async (refresh = false) => {
+    list.replaceChildren(h('div', { class: 'explorer-more' }, 'Interrogation de l’avion chargé…'));
+    try {
+      const res = await api.msfsInputs(refresh);
+      state.inputEvents = res.inputs;
+      if (state.status?.msfs) state.status.msfs.aircraft = res.aircraft;
+      ensureDatalists();
+      render();
+    } catch (e) {
+      list.replaceChildren(h('div', { class: 'note' }, icon('alert'), h('span', {}, e.message)));
+    }
+  };
+
+  // Lecture d'une variable (SimVar ou « L: ») en direct.
+  const varName = h('input', { class: 'mono', list: 'simvarList', placeholder: 'ex. L:A32NX_AUTOBRAKES_ARMED_MODE', spellcheck: 'false' });
+  const varUnit = h('select', {}, ...MSFS_UNITS.map((u) => h('option', { value: u }, u)));
+  const varOut = h('code', { class: 'explorer-value big' }, '—');
+  const readVar = async () => {
+    try {
+      const { value } = await api.msfsRead({ var: varName.value.trim(), unit: varUnit.value });
+      varOut.textContent = value === null ? 'pas de réponse' : String(value);
+    } catch (e) {
+      varOut.textContent = e.message;
+    }
+  };
+  ensureDatalists();
+
+  search.addEventListener('input', render);
+  const modal = h(
+    'div',
+    { class: 'modal explorer' },
+    h('div', { class: 'explorer-head' },
+      h('h3', {}, 'Explorateur MSFS'),
+      h('button', { class: 'btn small', onclick: () => load(true) }, icon('refresh'), 'Actualiser'),
+      h('button', { class: 'btn small ghost icon-only', title: 'Fermer', onclick: close }, icon('x'))),
+    msfsNote(),
+    h('p', { class: 'explorer-help' },
+      'Commandes de cockpit (Input Events) de l’avion chargé dans MSFS 2024. Cherchez un mot-clé, « Lire » affiche la valeur actuelle : actionnez l’interrupteur dans le cockpit puis relisez pour repérer la bonne commande.'),
+    search,
+    info,
+    list,
+    h('div', { class: 'explorer-var' },
+      h('span', { class: 'field-label' }, 'Lire une variable (SimVar ou L:)'),
+      h('div', { class: 'row' }, varName, varUnit, h('button', { class: 'btn', style: { flex: 'none' }, onclick: readVar }, 'Lire')),
+      varOut),
+    h('div', { class: 'modal-actions' },
+      state.inputEvents?.length
+        ? h('button', {
+            class: 'btn ghost',
+            onclick: () => {
+              const blob = new Blob([state.inputEvents.map((i) => i.name).join('\n')], { type: 'text/plain' });
+              const link = h('a', { href: URL.createObjectURL(blob), download: `input-events-${state.status?.msfs?.aircraft ?? 'avion'}.txt` });
+              link.click();
+            },
+          }, icon('download'), 'Exporter la liste')
+        : null,
+      h('button', { class: 'btn', onclick: close }, 'Fermer')),
+  );
+  const backdrop = h('div', { class: 'modal-backdrop explorer-backdrop', onmousedown: (e) => e.target === backdrop && close() }, modal);
+  document.body.append(backdrop);
+  document.addEventListener('keydown', onKey, true);
+  search.focus();
+  if (state.inputEvents) render();
+  if (state.status?.msfs?.connected) load(!state.inputEvents);
+  else list.replaceChildren(h('div', { class: 'explorer-more' }, 'Lancez MSFS et chargez un avion pour voir ses commandes.'));
+}
+
+// Bascule : état lu dans le simulateur (état réel, même si on agit dans le cockpit).
 function simSyncField(getAction, tag) {
   const a = getAction();
-  const on = !!a.sync?.simvar;
-  const listId = 'simvarList';
-  if (!document.getElementById(listId)) {
-    document.body.append(h('datalist', { id: listId }, ...MSFS_SIMVARS.map(([v, label]) => h('option', { value: v }, label))));
-  }
+  const on = !!(a.sync?.simvar || a.sync?.input);
   return h(
     'div',
     { class: 'field sim-sync' },
-    h(
-      'label',
-      { class: 'switch' },
+    h('label', { class: 'switch' },
       h('input', {
         type: 'checkbox',
         checked: on,
-        onchange: (e) =>
-          commit(() => {
-            if (e.target.checked) getAction().sync = { simvar: getAction().sync?.simvar || 'GEAR HANDLE POSITION' };
-            else delete getAction().sync;
-          }),
+        onchange: (e) => commit(() => {
+          if (e.target.checked) getAction().sync = { simvar: getAction().sync?.simvar || 'GEAR HANDLE POSITION' };
+          else delete getAction().sync;
+        }),
       }),
-      'État lu dans MSFS (SimConnect)',
-    ),
-    on
-      ? h(
-          'div',
-          { class: 'field' },
-          h('span', {}, 'Variable du simulateur (valeur non nulle = état 2)'),
-          h('input', {
-            class: 'mono',
-            list: listId,
-            value: a.sync.simvar,
-            spellcheck: 'false',
-            oninput: (e) => commit(() => (getAction().sync.simvar = e.target.value.toUpperCase()), { tag: `${tag}:simvar`, render: 'key' }),
-          }),
-          h(
-            'label',
-            { class: 'switch' },
-            h('input', { type: 'checkbox', checked: !!a.sync.invert, onchange: (e) => commit(() => (getAction().sync.invert = e.target.checked)) }),
-            'Inverser (valeur nulle = état 2)',
-          ),
-          h('span', { class: 'hint' }, 'L’état de la touche suit le simulateur : plus besoin de l’appui long pour se recaler.'),
-        )
-      : null,
+      'État lu dans MSFS (SimConnect)'),
+    ...(on ? simSourceFields(() => getAction().sync, `${tag}:sync`, { unitDefault: 'Bool', equals: true }) : []),
+    on ? h('span', { class: 'hint' }, 'L’état de la touche suit le simulateur : plus besoin de l’appui long pour se recaler. Pour une variable « L: », choisissez l’unité « number ».') : null,
   );
 }
 
@@ -1048,67 +1241,51 @@ function innerActionCard(title, getParent, prop, tag, { optional = false } = {})
   );
 }
 
-// Choix d'une variable numérique MSFS (valeur affichée ou position suivie).
-function numericSimvarSelect(current, onPick, { filter } = {}) {
-  const list = MSFS_NUMERIC_SIMVARS.filter((x) => !filter || filter(x));
-  return h(
-    'select',
-    { onchange: (e) => onPick(list.find(([v]) => v === e.target.value)) },
-    h('option', { value: '', disabled: true, selected: !current }, 'Choisir une valeur…'),
-    ...list.map(([v, , label]) => h('option', { value: v, selected: v === current }, label)),
-  );
-}
-
 function dialEditor(getAction, tag) {
   const a = getAction();
   const sens = a.sensitivity ?? 'normal';
   const display = a.display;
+  const shown = !!(display?.simvar || display?.input);
+  const fmt = (label, prop, type = 'text', placeholder = '') =>
+    h('label', { class: 'field' }, h('span', {}, label),
+      h('input', {
+        type, value: display?.[prop] ?? '', placeholder,
+        oninput: (e) => commit(() => (getAction().display[prop] = type === 'number' ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value), { tag: `${tag}:fmt:${prop}`, render: 'key' }),
+      }));
   return h(
     'div',
     { class: 'field' },
     h('div', { class: 'note info' }, icon('info'),
-      h('span', {}, 'Sur le Deck : glissez le doigt vers la droite ou vers le haut pour « + », vers la gauche ou vers le bas pour « − ». Un appui sans glisser déclenche l’action d’appui (valider, engager un mode…). Sur PC, la molette de la souris fonctionne aussi.')),
+      h('span', {}, 'Sur le Deck : glissez le doigt vers la droite ou vers le haut pour « + », vers la gauche ou vers le bas pour « − ». Un appui sans glisser déclenche l’action d’appui ; un appui long (½ s), l’action d’appui long (ex. tirer un bouton du FCU Airbus). Sur PC, la molette de la souris fonctionne aussi.')),
     h('span', { class: 'field-label' }, 'Sensibilité'),
-    h(
-      'div',
-      { class: 'segmented' },
+    h('div', { class: 'segmented' },
       ...[['fine', 'Fine'], ['normal', 'Normale'], ['fast', 'Rapide']].map(([id, label]) =>
-        h('button', { class: sens === id ? 'on' : '', onclick: () => commit(() => (getAction().sensitivity = id)) }, label),
-      ),
-    ),
-    h(
-      'div',
-      { class: 'steps' },
+        h('button', { class: sens === id ? 'on' : '', onclick: () => commit(() => (getAction().sensitivity = id)) }, label))),
+    h('div', { class: 'steps' },
       innerActionCard('Tourner +', getAction, 'inc', tag),
       innerActionCard('Tourner −', getAction, 'dec', tag),
       innerActionCard('Appui', getAction, 'press', tag, { optional: true }),
-    ),
-    h(
-      'div',
-      { class: 'field sim-sync' },
-      h(
-        'label',
-        { class: 'switch' },
+      innerActionCard('Appui long', getAction, 'hold', tag, { optional: true })),
+    h('div', { class: 'field sim-sync' },
+      h('label', { class: 'switch' },
         h('input', {
           type: 'checkbox',
-          checked: !!display?.simvar,
-          onchange: (e) =>
-            commit(() => {
-              if (!e.target.checked) return (getAction().display = null);
-              const [simvar, unit, , suffix, decimals] = MSFS_NUMERIC_SIMVARS[0];
-              getAction().display = { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' };
-            }),
+          checked: shown,
+          onchange: (e) => commit(() => {
+            if (!e.target.checked) return (getAction().display = null);
+            const [simvar, unit, , suffix, decimals] = MSFS_NUMERIC_SIMVARS[0];
+            getAction().display = { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' };
+          }),
         }),
-        'Afficher une valeur de MSFS sur la touche',
-      ),
-      display?.simvar
-        ? numericSimvarSelect(display.simvar, (x) =>
-            commit(() => {
-              const [simvar, unit, , suffix, decimals] = x;
-              getAction().display = { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' };
-            }),
-          )
-        : null,
+        'Afficher une valeur de MSFS sur la touche'),
+      ...(shown
+        ? [
+            ...simSourceFields(() => getAction().display, `${tag}:display`, { unitDefault: 'number' }),
+            h('div', { class: 'row' }, fmt('Suffixe', 'suffix', 'text', '° / ft / kt'), fmt('Décimales', 'decimals', 'number', '0'), fmt('Chiffres (zéros)', 'pad', 'number', '—')),
+            h('label', { class: 'switch' },
+              h('input', { type: 'checkbox', checked: !!display.sign, onchange: (e) => commit(() => (getAction().display.sign = e.target.checked)) }), 'Afficher le signe (+1500)'),
+          ]
+        : []),
     ),
   );
 }
@@ -1117,60 +1294,47 @@ function sliderEditor(getAction, tag) {
   const a = getAction();
   const mode = a.mode ?? 'value';
   const axisEvents = MSFS_EVENTS.find((g) => g.group.startsWith('Axes'))?.items ?? [];
-  const numField = (label, prop, hint) =>
+  const numField = (label, prop, hint, obj = () => getAction()) =>
     h('label', { class: 'field' }, h('span', {}, label),
       h('input', {
         type: 'number',
-        value: a[prop] ?? '',
-        oninput: (e) => commit(() => (getAction()[prop] = Number(e.target.value)), { tag: `${tag}:${prop}`, render: 'key' }),
+        value: obj()?.[prop] ?? '',
+        oninput: (e) => commit(() => (obj()[prop] = Number(e.target.value)), { tag: `${tag}:${prop}`, render: 'key' }),
       }),
       hint ? h('span', { class: 'hint' }, hint) : null);
+  const synced = !!(a.sync?.simvar || a.sync?.input);
 
   const valueMode = [
-    h(
-      'label',
-      { class: 'field' },
-      h('span', {}, 'Commande MSFS qui reçoit la position'),
-      h(
-        'select',
-        {
-          onchange: (e) =>
-            commit(() => {
-              getAction().set = { type: 'msfs', event: e.target.value };
-              // Le compensateur va de −16383 à +16383, les autres axes de 0 à 16383.
-              getAction().min = e.target.value === 'ELEVATOR_TRIM_SET' ? -16383 : 0;
-              getAction().max = 16383;
-            }),
-        },
-        ...axisEvents.map(([id, label]) => h('option', { value: id, selected: id === a.set?.event }, label)),
-      ),
-    ),
+    h('label', { class: 'field' }, h('span', {}, 'Commande MSFS qui reçoit la position'),
+      h('select', {
+        onchange: (e) => commit(() => {
+          getAction().set = { type: 'msfs', event: e.target.value };
+          // Le compensateur va de −16383 à +16383, les autres axes de 0 à 16383.
+          getAction().min = e.target.value === 'ELEVATOR_TRIM_SET' ? -16383 : 0;
+          getAction().max = 16383;
+        }),
+      }, ...axisEvents.map(([id, label]) => h('option', { value: id, selected: id === a.set?.event }, label)))),
     h('div', { class: 'row' }, numField('Valeur en bas', 'min'), numField('Valeur en haut', 'max')),
-    h(
-      'div',
-      { class: 'field sim-sync' },
-      h(
-        'label',
-        { class: 'switch' },
+    h('div', { class: 'field sim-sync' },
+      h('label', { class: 'switch' },
         h('input', {
           type: 'checkbox',
-          checked: !!a.sync?.simvar,
-          onchange: (e) =>
-            commit(() => {
-              if (!e.target.checked) return (getAction().sync = null);
-              const pct = MSFS_NUMERIC_SIMVARS.find((x) => x[1] === 'percent');
-              getAction().sync = { simvar: pct[0], unit: 'percent', min: 0, max: 100 };
-            }),
+          checked: synced,
+          onchange: (e) => commit(() => {
+            if (!e.target.checked) return (getAction().sync = null);
+            const pct = MSFS_NUMERIC_SIMVARS.find((x) => x[1] === 'percent');
+            getAction().sync = { simvar: pct[0], unit: 'percent', min: 0, max: 100 };
+          }),
         }),
-        'Suivre la position dans MSFS (levier bougé dans le cockpit)',
-      ),
-      a.sync?.simvar
-        ? numericSimvarSelect(
-            a.sync.simvar,
-            ([simvar, unit]) => commit(() => (getAction().sync = { simvar, unit, min: simvar === 'ELEVATOR TRIM PCT' ? -100 : 0, max: 100 })),
-            { filter: (x) => x[1] === 'percent' },
-          )
-        : null,
+        'Suivre la position dans MSFS (levier bougé dans le cockpit)'),
+      ...(synced
+        ? [
+            ...simSourceFields(() => getAction().sync, `${tag}:sync`, { unitDefault: 'percent' }),
+            h('div', { class: 'row' },
+              numField('Valeur lue en bas', 'min', null, () => getAction().sync),
+              numField('Valeur lue en haut', 'max', null, () => getAction().sync)),
+          ]
+        : []),
     ),
     msfsNote(),
   ];
@@ -1185,12 +1349,9 @@ function sliderEditor(getAction, tag) {
     { class: 'field' },
     h('div', { class: 'note info' }, icon('info'),
       h('span', {}, 'Sur le Deck : faites glisser le curseur. Il est vertical si la touche est plus haute que large (fusionnez-la en 1×3 pour un vrai levier). Un appui sans glisser déclenche l’action d’appui si elle est définie.')),
-    h(
-      'div',
-      { class: 'segmented' },
+    h('div', { class: 'segmented' },
       h('button', { class: mode === 'value' ? 'on' : '', onclick: () => commit(() => (getAction().mode = 'value')) }, 'Position (MSFS)'),
-      h('button', { class: mode === 'steps' ? 'on' : '', onclick: () => commit(() => (getAction().mode = 'steps')) }, 'Pas à pas (+ / −)'),
-    ),
+      h('button', { class: mode === 'steps' ? 'on' : '', onclick: () => commit(() => (getAction().mode = 'steps')) }, 'Pas à pas (+ / −)')),
     ...(mode === 'value' ? valueMode : stepsMode),
     h('div', { class: 'steps' }, innerActionCard('Appui', getAction, 'press', tag, { optional: true })),
   );
@@ -1930,6 +2091,7 @@ function bindGlobal() {
   $('undoBtn').addEventListener('click', undo);
   $('redoBtn').addEventListener('click', redo);
   $('profileBtn').addEventListener('click', profileMenu);
+  $('msfsPill').addEventListener('click', () => openExplorer());
   $('librarySearch').addEventListener('input', renderLibrary);
   $('layoutSelect').addEventListener('change', (e) => {
     const value = e.target.value;
@@ -1971,7 +2133,8 @@ function connectEvents() {
     hello: async ({ revision }) => {
       // Reconnexion : on récupère les modifications faites entre-temps.
       if (revision !== state.revision && !dirty) {
-        const { config, revision: r, states, levels, values } = await api.getConfig();
+        const { config, revision: r, states, levels, values, flags } = await api.getConfig();
+        state.flags = flags ?? {};
         state.config = config;
         state.revision = r;
         state.toggles = states ?? {};
@@ -1992,8 +2155,9 @@ function connectEvents() {
     press: ({ profileId, pageId, index, ok }) => {
       if (profileId === profile().id && pageId === page().id) flashSlot(index, ok);
     },
-    value: ({ key, value }) => {
+    value: ({ key, value, flags }) => {
       state.values[key] = value;
+      if (flags) state.flags[key] = flags;
       refreshKeyViews();
     },
     level: ({ key, level }) => {
@@ -2023,7 +2187,8 @@ async function init() {
   bindGlobal();
   renderLibrary();
   try {
-    const [{ config, revision, states, levels, values }, status] = await Promise.all([api.getConfig(), api.status()]);
+    const [{ config, revision, states, levels, values, flags }, status] = await Promise.all([api.getConfig(), api.status()]);
+    state.flags = flags ?? {};
     state.config = config;
     state.revision = revision;
     state.toggles = states ?? {};

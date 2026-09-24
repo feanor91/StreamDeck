@@ -1072,3 +1072,91 @@ body {
   color: var(--muted);
   white-space: nowrap;
 }
+
+/* ---------- Explorateur MSFS ---------- */
+#msfsPill {
+  cursor: pointer;
+}
+#msfsPill:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+.modal.explorer {
+  width: min(760px, 100%);
+  max-height: min(86vh, 900px);
+  gap: 12px;
+}
+.explorer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.explorer-head h3 {
+  flex: 1;
+}
+.explorer-help {
+  margin: 0 !important;
+  font-size: 12.5px;
+}
+.modal.explorer > input,
+.explorer-var input,
+.explorer-var select {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  outline: none;
+}
+.explorer-var select {
+  flex: none;
+  width: 150px;
+}
+.explorer-info {
+  font-size: 12px;
+  color: var(--faint);
+}
+.explorer-list {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.explorer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.explorer-row code {
+  flex: 1;
+  min-width: 0;
+  font: 12.5px var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.explorer-value {
+  font: 12px var(--mono);
+  color: var(--accent-2);
+  min-width: 40px;
+  text-align: right;
+}
+.explorer-value.big {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  text-align: left;
+}
+.explorer-more {
+  padding: 16px;
+  text-align: center;
+  color: var(--faint);
+  font-size: 13px;
+}
+.explorer-var {
+  padding-top: 4px;
+}

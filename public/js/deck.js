@@ -7,7 +7,7 @@ import { clientId } from './api.js';
 
 const $ = (id) => document.getElementById(id);
 
-const state = { config: null, layouts: null, profileId: null, pageId: null, toggles: {}, levels: {}, values: {} };
+const state = { config: null, layouts: null, profileId: null, pageId: null, toggles: {}, levels: {}, values: {}, flags: {} };
 const angles = {}; // angle affiché du repère de chaque bouton rotatif (visuel local)
 const dragging = new Set(); // curseurs en cours de manipulation : on ignore les positions reçues
 const LONG_PRESS_MS = 600;
@@ -98,7 +98,7 @@ const toggleState = (pageId, i) => (state.toggles[stateKey(profile().id, pageId,
 // Valeurs en direct d'une touche continue (bouton rotatif, curseur).
 function liveOf(pageId, i, cell) {
   const sk = stateKey(profile().id, pageId, i);
-  return { value: state.values[sk], level: state.levels[sk] ?? 0, angle: angles[sk] ?? 0, vertical: cell ? cell.h >= cell.w : true };
+  return { value: state.values[sk], flags: state.flags[sk], level: state.levels[sk] ?? 0, angle: angles[sk] ?? 0, vertical: cell ? cell.h >= cell.w : true };
 }
 
 function buildKey(pg, cell) {
@@ -195,12 +195,12 @@ function buildControl(pg, cell) {
       });
   };
 
-  const tap = () => {
+  const tap = (kind = 'press') => {
     if (nativeApp) nativeApp.haptic();
-    else navigator.vibrate?.(12);
-    if (!key.action.press?.type) return false;
+    else navigator.vibrate?.(kind === 'hold' ? [10, 40, 10] : 12);
+    if (!key.action[kind]?.type) return false;
     api
-      .control(profile().id, pg.id, i, { kind: 'press' })
+      .control(profile().id, pg.id, i, { kind })
       .then(() => feedback(el, 'ok'))
       .catch((e) => {
         feedback(el, 'err');
@@ -216,6 +216,8 @@ function buildControl(pg, cell) {
   let lastX = 0;
   let lastY = 0;
   let acc = 0;
+  let holdTimer = null;
+  let held = false;
 
   const step = (n) => {
     angles[sk] = (angles[sk] ?? 0) + 15 * n;
@@ -249,11 +251,25 @@ function buildControl(pg, cell) {
     startX = lastX = e.clientX;
     startY = lastY = e.clientY;
     acc = 0;
+    held = false;
+    clearTimeout(holdTimer);
+    // Appui long sans glisser : action « appui long » (tirer un bouton du FCU Airbus…).
+    if (isDial && key.action.hold?.type) {
+      holdTimer = setTimeout(() => {
+        if (moved) return;
+        held = true;
+        tap('hold');
+        feedback(el, 'ok');
+      }, LONG_PRESS_MS);
+    }
     if (!isDial) dragging.add(sk);
   });
   el.addEventListener('pointermove', (e) => {
     if (!down) return;
-    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) moved = true;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+      moved = true;
+      clearTimeout(holdTimer);
+    }
     if (isDial) {
       // Glisser vers la droite ou vers le haut = « + » ; vers la gauche ou le bas = « − ».
       acc += e.clientX - lastX - (e.clientY - lastY);
@@ -277,9 +293,10 @@ function buildControl(pg, cell) {
   const end = (e) => {
     if (!down) return;
     down = false;
+    clearTimeout(holdTimer);
     el.classList.remove('active');
     dragging.delete(sk);
-    if (moved || e.type === 'pointercancel') return;
+    if (moved || held || e.type === 'pointercancel') return;
     // Appui sans glisser : action « appui » (valider), sinon le curseur saute à la position touchée.
     if (!tap() && !isDial) setLevel(levelAt(e));
   };
@@ -416,11 +433,12 @@ function setConnected(on) {
 }
 
 async function load() {
-  const [{ config, states, levels, values }, status] = await Promise.all([api.getConfig(), api.status()]);
+  const [{ config, states, levels, values, flags }, status] = await Promise.all([api.getConfig(), api.status()]);
   state.layouts = status.layouts;
   state.toggles = states ?? {};
   state.levels = levels ?? {};
   state.values = values ?? {};
+  state.flags = flags ?? {};
   applyConfig(config);
 }
 
@@ -437,8 +455,9 @@ async function init() {
     error: () => setConnected(false),
     hello: () => load().catch(() => {}),
     config: ({ config }) => applyConfig(config),
-    value: ({ key, value }) => {
+    value: ({ key, value, flags }) => {
       state.values[key] = value;
+      if (flags) state.flags[key] = flags;
       refreshControl(key);
     },
     level: ({ key, level, origin }) => {

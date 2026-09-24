@@ -20,6 +20,8 @@ export const api = {
   control: (profileId, pageId, index, input) => request('POST', '/api/press', { profileId, pageId, index, input: { ...input, clientId } }),
   sync: (profileId, pageId, index) => request('POST', '/api/press', { profileId, pageId, index, syncOnly: true }),
   windows: () => request('GET', '/api/windows'),
+  msfsInputs: (refresh = false) => request('GET', `/api/msfs/inputs${refresh ? '?refresh=1' : ''}`),
+  msfsRead: (what) => request('POST', '/api/msfs/read', what),
 };
 
 // Flux d'événements temps réel (reconnexion automatique gérée par EventSource).
