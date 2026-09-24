@@ -63,6 +63,40 @@ Sur **Android 7 à 9**, l'affichage du Deck repose sur **Google Chrome** (et sur
 **Android System WebView** à partir d'Android 10) : mettez-le à jour depuis le Play
 Store. L'application prévient au démarrage si la version est trop ancienne.
 
+**Si l'installation échoue** (« Google Play Store a cessé de fonctionner »,
+« Application non installée ») :
+
+- ouvrez l'APK depuis le **gestionnaire de fichiers** plutôt que depuis la
+  notification de téléchargement ;
+- désinstallez une ancienne version de StreamDeck : les versions antérieures à la
+  0.6.1 n'ont pas toutes la même signature et ne s'installent pas l'une sur l'autre ;
+- désactivez temporairement l'analyse **Play Protect** (Play Store → menu →
+  Play Protect), ou videz le cache du Play Store ;
+- en dernier recours, depuis le PC : `adb install -r StreamDeck-Android-x.y.z.apk`.
+
+### Version et mises à jour
+
+La version installée est affichée partout : à côté du nom **StreamDeck** dans
+l'interface de configuration, en haut du menu de l'icône de la zone de
+notification, et en bas de l'écran de connexion Android.
+
+Les applications vérifient d'elles-mêmes (au démarrage puis toutes les 6 heures)
+les versions publiées sur GitHub :
+
+- **PC (Windows, AppImage)** : la nouvelle version se télécharge en arrière-plan.
+  Une notification et une pastille « Installer la vX » apparaissent ; un clic
+  redémarre StreamDeck sur la nouvelle version (sinon elle s'installe à la
+  fermeture). Menu de l'icône → « Rechercher une mise à jour », ou clic sur le
+  numéro de version dans l'interface, pour vérifier tout de suite.
+- **Android** : une fenêtre propose d'installer la nouvelle version ; l'APK est
+  téléchargé puis l'installeur d'Android s'ouvre (confirmez « Installer »). Sur
+  Android 8 et plus, autorisez StreamDeck à installer des applications la
+  première fois. « Rechercher une mise à jour » en bas de l'écran de connexion.
+
+Le dépôt GitHub doit être **public** pour que les applications puissent lire les
+versions publiées. La mise à jour automatique d'Android fonctionne à partir de la
+0.6.1 (première version signée avec la clé définitive).
+
 ## Interface de configuration
 
 - **Bibliothèque d'actions** (à gauche) : glissez une action sur une touche, ou
@@ -276,6 +310,34 @@ cd android && ./gradlew assembleRelease   # APK dans android/app/build/outputs/a
 ```
 
 Le projet `android/` s'ouvre aussi directement dans Android Studio.
+
+### Signature de l'APK
+
+Toutes les versions publiées doivent être signées avec **la même clé**, sinon
+Android refuse d'installer une mise à jour par-dessus la précédente. La clé n'est
+pas dans le dépôt : la CI la lit dans les secrets GitHub (Settings → Secrets and
+variables → Actions) :
+
+| Secret | Contenu |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | le fichier `.jks`, encodé en base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | mot de passe du fichier |
+| `ANDROID_KEY_ALIAS` | alias de la clé |
+| `ANDROID_KEY_PASSWORD` | mot de passe de la clé |
+
+Création de la clé (une seule fois, `keytool` est fourni avec Java / Android Studio),
+puis encodage en base64 sous Windows (PowerShell) :
+
+```powershell
+keytool -genkeypair -keystore streamdeck.jks -alias streamdeck -keyalg RSA -keysize 2048 -validity 36500
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("streamdeck.jks")) | Set-Clipboard
+```
+
+Conservez `streamdeck.jks` et ses mots de passe en lieu sûr : sans eux, les
+prochaines versions ne pourront plus mettre à jour l'application installée.
+Sans secrets, la CI compile avec une clé de débogage temporaire, et la
+publication d'une version est refusée. En local, définissez `SIGNING_STORE_FILE`,
+`SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS` et `SIGNING_KEY_PASSWORD`.
 
 ## Structure
 

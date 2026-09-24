@@ -1,7 +1,7 @@
 {
   "name": "streamdeck-clone",
   "productName": "StreamDeck",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Clone logiciel de Stream Deck : serveur PC, application de configuration et client Android.",
   "author": "StreamDeck",
   "license": "MIT",
@@ -20,6 +20,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "node-simconnect": "^4.2.0"
   },
   "devDependencies": {
@@ -71,6 +72,14 @@
       "category": "public.app-category.utilities",
       "icon": "desktop/assets/icon.png",
       "artifactName": "StreamDeck-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "feanor91",
+        "repo": "StreamDeck",
+        "releaseType": "release"
+      }
+    ]
   }
 }

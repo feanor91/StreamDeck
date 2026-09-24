@@ -10,6 +10,7 @@ import { runAction, toggleAction } from './actions.js';
 import { ToggleStates } from './states.js';
 import { stateKey } from '../shared/layout.js';
 import { startDiscovery } from './discovery.js';
+import { createReleaseChecker } from './update.js';
 import { createMsfs } from './msfs.js';
 import { normalizeVar, defaultUnit } from '../shared/msfs.js';
 import { clamp, levelToValue, valueToLevel, notchDelta, MAX_STEPS } from '../shared/controls.js';
@@ -129,6 +130,8 @@ export async function startDeckServer({
   discovery = true,
   msfs: msfsEnabled = true,
   msfsLoader, // tests : remplace le module node-simconnect par une imitation
+  updater: customUpdater, // application PC : téléchargement et installation (electron-updater)
+  updateCheck = true, // recherche automatique des nouvelles versions sur GitHub
   log = console,
 } = {}) {
   const store = new Store(dataDir);
@@ -277,6 +280,9 @@ export async function startDeckServer({
   }
   const ctx = { msfs };
 
+  const updater = customUpdater ?? createReleaseChecker({ current: VERSION, log, auto: updateCheck });
+  const stopUpdateEvents = updater.onChange((u) => broadcast('update', u));
+
   function broadcast(event, data) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const res of clients) res.write(payload);
@@ -326,6 +332,18 @@ export async function startDeckServer({
           layouts: LAYOUTS,
           msfs: msfsEnabled ? msfs.status : { available: false, connected: false, reason: 'Liaison MSFS désactivée.' },
         });
+
+      case 'GET /api/update':
+        return send(res, 200, updater.status());
+
+      case 'POST /api/update/check':
+        requireAdmin(req);
+        return send(res, 200, await updater.check());
+
+      case 'POST /api/update/install':
+        requireAdmin(req);
+        await updater.install();
+        return send(res, 200, { ok: true });
 
       case 'POST /api/press': {
         const { profileId, pageId, index, syncOnly, input } = await readJson(req);
@@ -474,6 +492,8 @@ export async function startDeckServer({
     executorReady: ready,
     deckUrls,
     async close() {
+      stopUpdateEvents();
+      if (!customUpdater) updater.close();
       disco?.close();
       msfs.close();
       await toggles.flush().catch(() => {});

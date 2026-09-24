@@ -357,8 +357,12 @@
       .version {
         margin-top: 18px;
         text-align: center;
-        color: #3a3f4f;
-        font-size: 12px;
+        color: #7a8094;
+        font-size: 13px;
+      }
+      .version .link {
+        margin-left: 6px;
+        font-size: 13px;
       }
     </style>
   </head>
@@ -400,7 +404,7 @@
         connectés au <b>même réseau Wi-Fi</b>. L’adresse du PC est aussi visible dans l’icône StreamDeck de la zone de
         notification Windows, menu « Connexion Android ».
       </p>
-      <div class="version" id="version"></div>
+      <div class="version"><span id="version"></span><button class="link" id="checkUpdate" hidden>Rechercher une mise à jour</button></div>
     </div>
 
     <div class="connecting" id="connecting">
@@ -510,6 +514,10 @@
       });
 
       $('version').textContent = state.version ? `Version ${state.version}` : '';
+      if (app.checkUpdate) {
+        $('checkUpdate').hidden = false;
+        $('checkUpdate').addEventListener('click', () => app.checkUpdate());
+      }
       renderRecents();
       showError(state.error);
       scan();

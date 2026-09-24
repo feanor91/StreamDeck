@@ -22,6 +22,9 @@ export const api = {
   windows: () => request('GET', '/api/windows'),
   msfsInputs: (refresh = false) => request('GET', `/api/msfs/inputs${refresh ? '?refresh=1' : ''}`),
   msfsRead: (what) => request('POST', '/api/msfs/read', what),
+  update: () => request('GET', '/api/update'),
+  checkUpdate: () => request('POST', '/api/update/check'),
+  installUpdate: () => request('POST', '/api/update/install'),
 };
 
 // Flux d'événements temps réel (reconnexion automatique gérée par EventSource).
