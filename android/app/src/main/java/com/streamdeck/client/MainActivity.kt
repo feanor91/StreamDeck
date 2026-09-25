@@ -128,7 +128,7 @@ class MainActivity : Activity() {
             .setTitle("Mise à jour nécessaire")
             .setMessage(
                 "Le moteur d'affichage de cet appareil est trop ancien (version $major, $MIN_WEBVIEW minimum). " +
-                    "Mettez à jour « $appName » depuis le Play Store, puis relancez StreamDeck."
+                    "Mettez à jour « $appName » depuis le Play Store, puis relancez StreamSim."
             )
             .setPositiveButton("Ouvrir le Play Store") { _, _ ->
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))) }
@@ -154,7 +154,7 @@ class MainActivity : Activity() {
                 val current = BuildConfigCompat.versionName(this)
                 result.onSuccess { r ->
                     when {
-                        Updater.compare(r.version, current) <= 0 -> if (manual) toast("StreamDeck est à jour (version $current).")
+                        Updater.compare(r.version, current) <= 0 -> if (manual) toast("StreamSim est à jour (version $current).")
                         !manual && prefs.getString("update_skipped", null) == r.version -> Unit
                         else -> offerUpdate(r, current)
                     }
@@ -170,7 +170,7 @@ class MainActivity : Activity() {
         if (updateDialog?.isShowing == true) return
         updateDialog = dialog()
             .setTitle("Mise à jour disponible")
-            .setMessage("StreamDeck ${r.version} est disponible (version installée : $current).\n\nL'installation ne modifie pas vos réglages.")
+            .setMessage("StreamSim ${r.version} est disponible (version installée : $current).\n\nL'installation ne modifie pas vos réglages.")
             .setPositiveButton("Installer") { _, _ -> startDownload(r) }
             .setNeutralButton("Ignorer cette version") { _, _ -> prefs.edit().putString("update_skipped", r.version).apply() }
             .setNegativeButton("Plus tard", null)
@@ -179,7 +179,7 @@ class MainActivity : Activity() {
 
     private fun startDownload(r: Release) {
         val progress = dialog()
-            .setTitle("Téléchargement de StreamDeck ${r.version}")
+            .setTitle("Téléchargement de StreamSim ${r.version}")
             .setMessage("Préparation…")
             .setCancelable(false)
             .setNegativeButton("Annuler") { _, _ -> download?.cancel(true) }
@@ -205,7 +205,7 @@ class MainActivity : Activity() {
             installAfterPermission = true
             dialog()
                 .setTitle("Autorisation nécessaire")
-                .setMessage("Pour installer la mise à jour, autorisez StreamDeck à installer des applications, puis revenez dans StreamDeck.")
+                .setMessage("Pour installer la mise à jour, autorisez StreamSim à installer des applications, puis revenez dans StreamSim.")
                 .setPositiveButton("Ouvrir les réglages") { _, _ ->
                     startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
                 }
@@ -276,7 +276,7 @@ class MainActivity : Activity() {
                     web.loadUrl("http://${s.host}:${s.port}/deck?app=android")
                 }.onFailure {
                     val msg = "Impossible de joindre ${server.host}:${server.port}. " +
-                        "Vérifiez que StreamDeck est lancé sur le PC et que le téléphone est sur le même réseau Wi-Fi."
+                        "Vérifiez que StreamSim est lancé sur le PC et que le téléphone est sur le même réseau Wi-Fi."
                     if (web.url?.startsWith("file:") == true) js("window.onConnectError(${JSONObject.quote(msg)})")
                     else showConnect(msg)
                 }
@@ -291,7 +291,7 @@ class MainActivity : Activity() {
         try {
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(body)
-            if (json.optString("app", "streamdeck") != "streamdeck") error("not a StreamDeck server")
+            if (json.optString("app", "streamdeck") != "streamdeck") error("not a StreamSim server")
             return json.optString("name", "")
         } finally {
             conn.disconnect()

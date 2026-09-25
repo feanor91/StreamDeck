@@ -6,11 +6,11 @@
 // - Input Events de MSFS 2024 : liste des commandes de cockpit de l'avion chargé,
 //   lecture, modification et suivi de leur valeur.
 // SimConnect est intégré au simulateur : aucun fichier de configuration n'est
-// nécessaire quand StreamDeck tourne sur le même PC.
+// nécessaire quand StreamSim tourne sur le même PC.
 import { isValidEventName, isValidSimvar, isValidInputEvent, normalizeVar } from '../shared/msfs.js';
 
 const RETRY_MS = 5000;
-const APP_NAME = 'StreamDeck';
+const APP_NAME = 'StreamSim';
 const PRIORITY_HIGHEST = 1; // SIMCONNECT_GROUP_PRIORITY_HIGHEST (non exporté par node-simconnect)
 const UNIT_RE = /^[A-Za-z0-9 /_.-]{1,40}$/;
 

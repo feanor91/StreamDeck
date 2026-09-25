@@ -1,9 +1,9 @@
 {
-  "name": "streamdeck-clone",
-  "productName": "StreamDeck",
-  "version": "0.8.0",
+  "name": "streamsim",
+  "productName": "StreamSim",
+  "version": "0.9.0",
   "description": "Clone logiciel de Stream Deck : serveur PC, application de configuration et client Android.",
-  "author": "StreamDeck",
+  "author": "StreamSim",
   "license": "MIT",
   "type": "module",
   "main": "desktop/main.js",
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.streamdeck.clone",
-    "productName": "StreamDeck",
+    "productName": "StreamSim",
     "files": [
       "desktop/**",
       "server/**",
@@ -54,8 +54,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "StreamDeck",
-      "artifactName": "StreamDeck-Setup-${version}.${ext}"
+      "shortcutName": "StreamSim",
+      "artifactName": "StreamSim-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [
@@ -63,7 +63,7 @@
       ],
       "category": "Utility",
       "icon": "desktop/assets/icon.png",
-      "artifactName": "StreamDeck-${version}.${ext}"
+      "artifactName": "StreamSim-${version}.${ext}"
     },
     "mac": {
       "target": [
@@ -71,13 +71,13 @@
       ],
       "category": "public.app-category.utilities",
       "icon": "desktop/assets/icon.png",
-      "artifactName": "StreamDeck-${version}.${ext}"
+      "artifactName": "StreamSim-${version}.${ext}"
     },
     "publish": [
       {
         "provider": "github",
         "owner": "feanor91",
-        "repo": "StreamDeck",
+        "repo": "StreamSim",
         "releaseType": "release"
       }
     ]

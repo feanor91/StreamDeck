@@ -23,7 +23,7 @@ export function createReleaseChecker({ current, log = console, fetchImpl = globa
     set({ state: 'checking', error: null });
     try {
       const res = await fetchImpl(`https://api.github.com/repos/${RELEASES_REPO}/releases/latest`, {
-        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'StreamDeck' },
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'StreamSim' },
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) throw new Error(res.status === 404 ? 'aucune version publiée trouvée' : `GitHub a répondu ${res.status}`);

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Le serveur StreamDeck tourne sur le réseau local en HTTP simple. -->
+<!-- Le serveur StreamSim tourne sur le réseau local en HTTP simple. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

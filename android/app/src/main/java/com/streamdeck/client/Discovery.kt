@@ -15,7 +15,7 @@ data class DeckServer(val name: String, val host: String, val port: Int) {
 }
 
 /**
- * Recherche les serveurs StreamDeck du réseau local : diffusion UDP d'un message
+ * Recherche les serveurs StreamSim du réseau local : diffusion UDP d'un message
  * « STREAMDECK_DISCOVER » sur le port 3211, chaque PC répond avec son nom et son port HTTP.
  */
 object Discovery {

@@ -419,13 +419,13 @@ function renderUpdate() {
   if (pill.hidden) return;
   if (u.state === 'ready') {
     label.textContent = `Installer la v${u.latest}`;
-    pill.title = u.canInstall ? 'Redémarrer StreamDeck et installer la mise à jour' : 'Mise à jour prête';
+    pill.title = u.canInstall ? 'Redémarrer StreamSim et installer la mise à jour' : 'Mise à jour prête';
   } else if (u.state === 'downloading') {
     label.textContent = `Téléchargement v${u.latest}… ${u.progress ?? 0} %`;
     pill.title = 'La mise à jour sera proposée à la fin du téléchargement.';
   } else if (u.canInstall) {
     label.textContent = `Installer la v${u.latest}`;
-    pill.title = 'Télécharger et installer la mise à jour, puis redémarrer StreamDeck';
+    pill.title = 'Télécharger et installer la mise à jour, puis redémarrer StreamSim';
   } else {
     label.textContent = `v${u.latest} disponible`;
     pill.title = 'Ouvrir la page de téléchargement';
@@ -437,8 +437,8 @@ async function onUpdatePill() {
   if (!u) return;
   if ((u.state === 'ready' || u.state === 'available') && u.canInstall) {
     const ok = await confirmModal({
-      title: `Installer StreamDeck ${u.latest} ?`,
-      message: 'La mise à jour se télécharge, puis StreamDeck se ferme, l’installe et redémarre. Le Deck sera indisponible quelques secondes.',
+      title: `Installer StreamSim ${u.latest} ?`,
+      message: 'La mise à jour se télécharge, puis StreamSim se ferme, l’installe et redémarre. Le Deck sera indisponible quelques secondes.',
       confirmLabel: 'Installer et redémarrer',
     });
     if (!ok) return;
@@ -460,7 +460,7 @@ async function checkUpdateNow() {
     state.update = await api.checkUpdate();
     renderUpdate();
     const u = state.update;
-    if (u.state === 'current') toast(`StreamDeck est à jour (v${u.current})`, 'ok');
+    if (u.state === 'current') toast(`StreamSim est à jour (v${u.current})`, 'ok');
     else if (u.state === 'error') toast(u.error, 'err', 6000);
     else if (u.latest) toast(`Nouvelle version disponible : v${u.latest}`, 'ok');
   } catch (e) {
@@ -477,7 +477,7 @@ function renderStatus() {
   if (!state.connected || !s) {
     pill.dataset.state = 'err';
     label.textContent = 'Serveur déconnecté';
-    pill.title = 'Impossible de joindre le serveur StreamDeck.';
+    pill.title = 'Impossible de joindre le serveur StreamSim.';
     return;
   }
   const ex = s.executorStatus;
@@ -552,7 +552,7 @@ function buildEmptyInspector() {
       'div',
       { class: 'connect-card' },
       h('h4', {}, 'Connecter un téléphone Android'),
-      h('p', {}, 'Ouvrez l’application StreamDeck sur le téléphone, connecté au même Wi-Fi : ce PC apparaît automatiquement. Sinon, saisissez l’adresse :'),
+      h('p', {}, 'Ouvrez l’application StreamSim sur le téléphone, connecté au même Wi-Fi : ce PC apparaît automatiquement. Sinon, saisissez l’adresse :'),
       ...(addrs.length ? addrs : [location.host]).map((u) =>
         h(
           'code',
@@ -2253,7 +2253,7 @@ function downloadJson(data, name) {
 }
 
 function exportConfig() {
-  downloadJson(state.config, `streamdeck-${new Date().toISOString().slice(0, 10)}.json`);
+  downloadJson(state.config, `streamsim-${new Date().toISOString().slice(0, 10)}.json`);
   toast('Configuration exportée dans le dossier Téléchargements', 'ok');
 }
 
@@ -2342,7 +2342,7 @@ function openBackups() {
     const download = async (b) => {
       try {
         const data = await api.readBackup(b.id);
-        downloadJson(data.config, `streamdeck-${b.id}.json`);
+        downloadJson(data.config, `streamsim-${b.id}.json`);
         toast('Sauvegarde téléchargée dans le dossier Téléchargements', 'ok');
       } catch (e) {
         toast(e.message, 'err');
@@ -2378,7 +2378,7 @@ async function importConfig(file) {
   try {
     const data = JSON.parse(await file.text());
     const cfg = data.config ?? data;
-    if (!Array.isArray(cfg.profiles)) throw new Error('Ce fichier ne contient pas de configuration StreamDeck.');
+    if (!Array.isArray(cfg.profiles)) throw new Error('Ce fichier ne contient pas de configuration StreamSim.');
     const ok = await confirmModal({
       title: 'Importer cette configuration ?',
       message: `${cfg.profiles.length} profil(s). La configuration actuelle sera remplacée ; elle est d’abord sauvegardée (« Avant import » dans Sauvegardes) et Ctrl+Z annule l’import.`,

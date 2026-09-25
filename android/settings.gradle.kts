@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "StreamDeck"
+rootProject.name = "StreamSim"
 include(":app")

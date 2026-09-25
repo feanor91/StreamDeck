@@ -8,11 +8,13 @@ android {
     compileSdk = 35
 
     defaultConfig {
+        // Identifiant conservé depuis l'ancien nom « StreamDeck » : StreamSim se met à jour
+        // par-dessus l'application déjà installée (en changer créerait une seconde application).
         applicationId = "com.streamdeck.client"
         minSdk = 24 // Android 7.0
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.8.0"
+        versionCode = 14
+        versionName = "0.9.0"
     }
 
     // Clé de signature fournie par l'environnement (secrets GitHub dans la CI) :

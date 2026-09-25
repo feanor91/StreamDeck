@@ -3,7 +3,7 @@
     <color name="deck_black">#FF050608</color>
     <color name="icon_bg">#FF12141C</color>
 
-    <style name="Theme.StreamDeck" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.StreamSim" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/deck_black</item>
         <item name="android:statusBarColor">@color/deck_black</item>
         <item name="android:navigationBarColor">@color/deck_black</item>

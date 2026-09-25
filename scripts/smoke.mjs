@@ -1,4 +1,4 @@
-// Test de fumée : attend qu'un serveur StreamDeck réponde, vérifie l'exécuteur
+// Test de fumée : attend qu'un serveur StreamSim réponde, vérifie l'exécuteur
 // et envoie une touche inoffensive (F24). Utilisé par l'intégration continue.
 //   node scripts/smoke.mjs [--send]
 const base = process.env.DECK_URL || 'http://127.0.0.1:3210';

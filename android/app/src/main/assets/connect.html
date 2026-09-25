@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    <title>StreamDeck</title>
+    <title>StreamSim</title>
     <style>
       :root {
         color-scheme: dark;
@@ -371,7 +371,7 @@
       <header>
         <div class="logo"><i></i><i></i><i></i><i></i></div>
         <div>
-          <h1>StreamDeck</h1>
+          <h1>StreamSim</h1>
           <p>Connectez-vous à votre PC</p>
         </div>
       </header>
@@ -400,8 +400,8 @@
       </section>
 
       <p class="help">
-        Lancez <b>StreamDeck</b> sur votre PC : il apparaîtra ici automatiquement. Le téléphone et le PC doivent être
-        connectés au <b>même réseau Wi-Fi</b>. L’adresse du PC est aussi visible dans l’icône StreamDeck de la zone de
+        Lancez <b>StreamSim</b> sur votre PC : il apparaîtra ici automatiquement. Le téléphone et le PC doivent être
+        connectés au <b>même réseau Wi-Fi</b>. L’adresse du PC est aussi visible dans l’icône StreamSim de la zone de
         notification Windows, menu « Connexion Android ».
       </p>
       <div class="version"><span id="version"></span><button class="link" id="checkUpdate" hidden>Rechercher une mise à jour</button></div>
@@ -492,7 +492,7 @@
         $('rescan').disabled = false;
         const box = $('found');
         if (!list.length) {
-          box.innerHTML = '<div class="empty">Aucun PC trouvé. Vérifiez que StreamDeck est lancé sur le PC, ou saisissez son adresse ci-dessous.</div>';
+          box.innerHTML = '<div class="empty">Aucun PC trouvé. Vérifiez que StreamSim est lancé sur le PC, ou saisissez son adresse ci-dessous.</div>';
           return;
         }
         box.replaceChildren(...list.map((s) => item(s)));
