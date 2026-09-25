@@ -1,4 +1,4 @@
-# StreamDeck
+# StreamSim
 
 Clone logiciel d'un Stream Deck, en trois morceaux :
 
@@ -11,10 +11,16 @@ Clone logiciel d'un Stream Deck, en trois morceaux :
 Chaque appui sur le téléphone envoie l'action au logiciel qui doit la recevoir sur
 le PC : raccourci clavier, texte, commande multimédia, lancement d'application…
 
+> **Ancien nom : StreamDeck.** Le projet s'appelle StreamSim depuis la version 0.9.0.
+> Les applications déjà installées se mettent à jour normalement : sur le PC, la
+> configuration de `%APPDATA%\StreamDeck` est reprise automatiquement dans
+> `%APPDATA%\StreamSim` (l'ancien dossier est conservé) ; sur Android, la mise à jour
+> remplace l'application existante.
+
 ```
  ┌──────────── PC ─────────────┐             ┌──── Android ────┐
  │ Application PC (Electron)   │   Wi-Fi     │ Application     │
- │  ├─ configuration (fenêtre) │ ◄─────────► │ StreamDeck      │
+ │  ├─ configuration (fenêtre) │ ◄─────────► │ StreamSim       │
  │  └─ serveur :3210 ──► OBS,  │  HTTP 3210  │  (le Deck)      │
  │     Chrome, Discord…        │  UDP  3211  │                 │
  └─────────────────────────────┘ (découverte)└─────────────────┘
@@ -31,16 +37,16 @@ publication sont créées automatiquement.
 
 | Fichier | Pour |
 | --- | --- |
-| `StreamDeck-Setup-x.y.z.exe` | Windows : installateur de l'application PC |
-| `StreamDeck-x.y.z.AppImage` | Linux : application PC |
-| `StreamDeck-Android-x.y.z.apk` | Android 7.0 ou plus récent |
+| `StreamSim-Setup-x.y.z.exe` | Windows : installateur de l'application PC |
+| `StreamSim-x.y.z.AppImage` | Linux : application PC |
+| `StreamSim-Android-x.y.z.apk` | Android 7.0 ou plus récent |
 
 ### Sur le PC
 
-1. Lancez l'installateur puis **StreamDeck**.
+1. Lancez l'installateur puis **StreamSim**.
 2. Au premier lancement, Windows demande l'autorisation réseau : acceptez pour les
    **réseaux privés**, sinon le téléphone ne pourra pas se connecter.
-3. La fenêtre de configuration s'ouvre. La fermer laisse StreamDeck actif dans la zone
+3. La fenêtre de configuration s'ouvre. La fermer laisse StreamSim actif dans la zone
    de notification (clic sur l'icône pour la rouvrir, clic droit pour le menu :
    adresse du PC, lancement au démarrage, quitter).
 
@@ -48,8 +54,8 @@ publication sont créées automatiquement.
 
 1. Copiez l'APK sur le téléphone et ouvrez-le (autorisez l'installation
    d'applications de sources inconnues si Android le demande).
-2. Ouvrez **StreamDeck** : le PC apparaît dans « Sur ce réseau ». Touchez-le.
-   Sinon, saisissez son adresse IP (menu « Connexion Android » de l'icône StreamDeck).
+2. Ouvrez **StreamSim** : le PC apparaît dans « Sur ce réseau ». Touchez-le.
+   Sinon, saisissez son adresse IP (menu « Connexion Android » de l'icône StreamSim).
 3. L'application se reconnecte automatiquement au dernier PC. Le bouton ▭ en haut à
    droite du Deck (ou la touche Retour) permet de changer de PC.
 
@@ -74,15 +80,15 @@ Store. L'application prévient au démarrage si la version est trop ancienne.
 
 - ouvrez l'APK depuis le **gestionnaire de fichiers** plutôt que depuis la
   notification de téléchargement ;
-- désinstallez une ancienne version de StreamDeck : les versions antérieures à la
+- désinstallez une ancienne version de StreamSim : les versions antérieures à la
   0.6.1 n'ont pas toutes la même signature et ne s'installent pas l'une sur l'autre ;
 - désactivez temporairement l'analyse **Play Protect** (Play Store → menu →
   Play Protect), ou videz le cache du Play Store ;
-- en dernier recours, depuis le PC : `adb install -r StreamDeck-Android-x.y.z.apk`.
+- en dernier recours, depuis le PC : `adb install -r StreamSim-Android-x.y.z.apk`.
 
 ### Version et mises à jour
 
-La version installée est affichée partout : à côté du nom **StreamDeck** dans
+La version installée est affichée partout : à côté du nom **StreamSim** dans
 l'interface de configuration, en haut du menu de l'icône de la zone de
 notification, et en bas de l'écran de connexion Android.
 
@@ -92,13 +98,13 @@ d'elle-même** :
 
 - **PC (Windows, AppImage)** : « Mettre à jour maintenant » télécharge la nouvelle
   version en arrière-plan (progression dans la barre des tâches et dans
-  l'interface), puis StreamDeck redémarre dessus. « Plus tard » : la pastille
+  l'interface), puis StreamSim redémarre dessus. « Plus tard » : la pastille
   « Installer la vX » de l'interface et le menu de l'icône permettent de lancer
   la mise à jour quand vous voulez. La vérification est refaite toutes les
-  6 heures si StreamDeck reste ouvert. Menu de l'icône → « Rechercher une mise à
+  6 heures si StreamSim reste ouvert. Menu de l'icône → « Rechercher une mise à
   jour », ou clic sur le numéro de version, pour vérifier tout de suite.
 - **Android** : « Installer » télécharge l'APK puis ouvre l'installeur d'Android
-  (confirmez « Installer »). Sur Android 8 et plus, autorisez StreamDeck à
+  (confirmez « Installer »). Sur Android 8 et plus, autorisez StreamSim à
   installer des applications la première fois. La vérification est refaite quand
   l'application revient au premier plan après 30 minutes.
   « Rechercher une mise à jour » en bas de l'écran de connexion.
@@ -138,7 +144,7 @@ versions publiées. La mise à jour automatique d'Android fonctionne à partir d
     transférer la configuration vers un autre PC (un import est lui aussi
     précédé d'une sauvegarde « Avant import »).
   - Les sauvegardes sont stockées dans le dossier `backups` des données
-    (`%APPDATA%\StreamDeck\data\backups` sous Windows).
+    (`%APPDATA%\StreamSim\data\backups` sous Windows).
 - **Dispositions** : Mini (2×3), Standard (3×5), Plus (4×4) et XL (4×8).
 - L'enregistrement est automatique. `Ctrl+Z` / `Ctrl+Y` pour annuler/rétablir.
 
@@ -182,10 +188,10 @@ d'état ; deux pastilles indiquent l'état courant.
 
 ### Microsoft Flight Simulator 2024 (et 2020)
 
-StreamDeck pilote MSFS directement par **SimConnect**, l'interface officielle
+StreamSim pilote MSFS directement par **SimConnect**, l'interface officielle
 intégrée au simulateur :
 
-- **aucun fichier de configuration** : quand StreamDeck tourne sur le même PC que
+- **aucun fichier de configuration** : quand StreamSim tourne sur le même PC que
   le simulateur, la liaison s'établit toute seule dès que MSFS est lancé
   (indicateur « MSFS connecté » en haut de l'écran de configuration) ;
 - les commandes partent **même si la fenêtre du simulateur n'a pas le focus**, et
@@ -248,14 +254,14 @@ La liaison utilise la bibliothèque [node-simconnect](https://github.com/EvenAR/
 
 ### SimHub
 
-StreamDeck dialogue avec [SimHub](https://www.simhubdash.com/) grâce au plugin
+StreamSim dialogue avec [SimHub](https://www.simhubdash.com/) grâce au plugin
 gratuit **SimHub Property Server** ([pre-martin/SimHubPropertyServer](https://github.com/pre-martin/SimHubPropertyServer)) :
 
 1. Téléchargez `PropertyServer.dll` depuis la page *Releases* du plugin et copiez-le
    dans le dossier d'installation de SimHub (SimHub 9.6 minimum).
 2. Relancez SimHub et activez le plugin (*Settings → Plugins*).
 3. La pastille **SimHub** de l'interface de configuration passe au vert.
-   StreamDeck se connecte à `127.0.0.1:18082` et se reconnecte tout seul si
+   StreamSim se connecte à `127.0.0.1:18082` et se reconnecte tout seul si
    SimHub est relancé (autre PC ou autre port : variables d'environnement
    `SIMHUB_HOST` et `SIMHUB_PORT`).
 
@@ -357,7 +363,7 @@ Variables d'environnement (serveur seul, et application PC pour `PORT`) :
 | `DECK_DRY_RUN` | — | `1` : mode simulation, les actions sont journalisées sans être envoyées |
 
 L'application PC range sa configuration dans le dossier utilisateur
-(`%APPDATA%\StreamDeck\data` sous Windows).
+(`%APPDATA%\StreamSim\data` sous Windows).
 
 ## Développement
 

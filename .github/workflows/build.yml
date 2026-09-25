@@ -84,14 +84,14 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           mkdir -p out
-          cp android/app/build/outputs/apk/release/app-release.apk "out/StreamDeck-Android-$VERSION.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "out/StreamSim-Android-$VERSION.apk"
       - name: Vérifier la signature de l'APK
         run: |
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
           "$APKSIGNER" verify --verbose --print-certs out/*.apk | grep -E "Verified using v[12]|certificate SHA-256|DN:"
       - uses: actions/upload-artifact@v4
         with:
-          name: StreamDeck-Android
+          name: StreamSim-Android
           path: out/*.apk
           if-no-files-found: error
 
@@ -109,13 +109,13 @@ jobs:
               dist/*.exe
               dist/*.exe.blockmap
               dist/latest.yml
-            name: StreamDeck-Windows
+            name: StreamSim-Windows
           - os: ubuntu-latest
             dist: dist:linux
             files: |
               dist/*.AppImage
               dist/latest-linux.yml
-            name: StreamDeck-Linux
+            name: StreamSim-Linux
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -174,7 +174,7 @@ jobs:
         with:
           # Sur un lancement manuel, l'étiquette est créée sur le commit compilé.
           tag_name: ${{ inputs.release || github.ref_name }}
-          name: StreamDeck ${{ inputs.release || github.ref_name }}
+          name: StreamSim ${{ inputs.release || github.ref_name }}
           target_commitish: ${{ github.sha }}
           files: artifacts/*
           generate_release_notes: true

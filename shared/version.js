@@ -14,5 +14,5 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-export const RELEASES_REPO = 'feanor91/StreamDeck';
+export const RELEASES_REPO = 'feanor91/StreamSim';
 export const RELEASES_URL = `https://github.com/${RELEASES_REPO}/releases`;

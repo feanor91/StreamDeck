@@ -21,7 +21,7 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
-### StreamDeck clone ###
+### StreamSim clone ###
 node_modules/
 data/
 *.log

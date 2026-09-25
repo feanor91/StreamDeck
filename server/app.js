@@ -122,7 +122,7 @@ export function lanAddresses() {
 }
 
 /**
- * Démarre le serveur StreamDeck (HTTP + découverte réseau).
+ * Démarre le serveur StreamSim (HTTP + découverte réseau).
  * Utilisé par la ligne de commande (server/index.js) et par l'application PC (desktop/main.js).
  */
 export async function startDeckServer({
@@ -398,7 +398,7 @@ export async function startDeckServer({
 
       case 'GET /api/status':
         return send(res, 200, {
-          app: 'streamdeck',
+          app: 'streamdeck', // identifiant de protocole, inchangé depuis l'ancien nom (clients existants)
           version: VERSION,
           name: os.hostname(),
           platform: process.platform,

@@ -13,12 +13,12 @@ try {
     remoteAdmin: process.env.DECK_REMOTE_ADMIN === '1',
   });
 } catch (e) {
-  console.error(e.code === 'EADDRINUSE' ? `Le port ${port} est déjà utilisé (StreamDeck tourne peut-être déjà).` : e);
+  console.error(e.code === 'EADDRINUSE' ? `Le port ${port} est déjà utilisé (StreamSim tourne peut-être déjà).` : e);
   process.exit(1);
 }
 
 console.log('');
-console.log('  ▣  StreamDeck est prêt');
+console.log('  ▣  StreamSim est prêt');
 console.log(`     Gestion   : http://localhost:${port}/`);
 console.log(`     Deck      : http://localhost:${port}/deck`);
 for (const url of deck.deckUrls()) console.log(`     Réseau    : ${url}`);

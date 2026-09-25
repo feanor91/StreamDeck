@@ -507,7 +507,7 @@ async function init() {
   try {
     await load();
   } catch (e) {
-    document.body.append(h('div', { class: 'deck-offline' }, `Impossible de joindre le serveur StreamDeck.\n${e.message}`));
+    document.body.append(h('div', { class: 'deck-offline' }, `Impossible de joindre le serveur StreamSim.\n${e.message}`));
     setTimeout(() => location.reload(), 4000);
     return;
   }

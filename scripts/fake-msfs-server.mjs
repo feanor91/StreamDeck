@@ -1,4 +1,4 @@
-// Outil de développement : serveur StreamDeck relié à un faux simulateur.
+// Outil de développement : serveur StreamSim relié à un faux simulateur.
 //   node scripts/fake-msfs-server.mjs
 // Pilotage du faux simulateur :
 //   http://127.0.0.1:3299/set?simvar=L:A32NX_FCU_AP_1_LIGHT_ON&value=1   (variable)
@@ -21,7 +21,7 @@ const sim = fakeSimConnect({
 });
 
 await startDeckServer({ dryRun: true, dataDir: process.env.DECK_DATA_DIR, msfsLoader: async () => sim.lib });
-console.log('Serveur StreamDeck + faux MSFS : http://localhost:3210/');
+console.log('Serveur StreamSim + faux MSFS : http://localhost:3210/');
 
 http
   .createServer((req, res) => {

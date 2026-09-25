@@ -1,8 +1,9 @@
-// Application PC : héberge le serveur StreamDeck et affiche l'interface de configuration.
+// Application PC : héberge le serveur StreamSim et affiche l'interface de configuration.
 // Fermer la fenêtre la réduit dans la zone de notification : le serveur reste actif
 // pour que l'application Android puisse continuer à envoyer des touches.
 import { app, BrowserWindow, Tray, Menu, shell, dialog, clipboard, nativeImage, Notification } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import updaterPkg from 'electron-updater';
@@ -42,8 +43,38 @@ function prepareRegistryHelper() {
   } catch {}
 }
 
+// L'application s'appelait « StreamDeck » jusqu'à la version 0.8 : ses données étaient dans
+// %APPDATA%\StreamDeck. Au premier lancement de StreamSim, on les reprend (copie : l'ancien
+// dossier reste intact, au cas où).
+function migrateFromStreamDeck() {
+  try {
+    const newData = path.join(app.getPath('userData'), 'data');
+    const oldData = path.join(app.getPath('appData'), 'StreamDeck', 'data');
+    if (fs.existsSync(path.join(newData, 'config.json')) || !fs.existsSync(path.join(oldData, 'config.json'))) return;
+    fs.cpSync(oldData, newData, { recursive: true });
+    console.log(`Configuration reprise de ${oldData}`);
+  } catch (e) {
+    console.warn(`Reprise de l'ancienne configuration impossible : ${e.message}`);
+  }
+}
+
+// « Lancer au démarrage » : l'entrée Windows pointe encore vers l'ancien StreamDeck.exe.
+// Elle porte le même nom (identifiant d'application inchangé) : on la fait pointer vers StreamSim.
+function migrateLoginItem() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const s = app.getLoginItemSettings({ args: ['--hidden'] });
+    const old = (s.launchItems ?? []).some((i) => /StreamDeck\.exe$/i.test(i.path ?? ''));
+    if (!s.openAtLogin && old) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });
+  } catch {}
+}
+
 async function boot() {
+  // Identifiant technique conservé depuis « StreamDeck » : notifications, lancement au démarrage
+  // et installateur (mise à jour sur place) le reconnaissent.
   app.setAppUserModelId('com.streamdeck.clone');
+  migrateFromStreamDeck();
+  migrateLoginItem();
   prepareRegistryHelper();
   updater = createUpdater();
   updater.onChange(onUpdateChange);
@@ -52,7 +83,7 @@ async function boot() {
   } catch (e) {
     if (e.code !== 'EADDRINUSE' || !(await isDeckServer())) {
       dialog.showErrorBox(
-        'StreamDeck',
+        'StreamSim',
         e.code === 'EADDRINUSE'
           ? `Le port ${PORT} est déjà utilisé par une autre application.`
           : `Impossible de démarrer le serveur :\n${e.message}`,
@@ -60,7 +91,7 @@ async function boot() {
       app.exit(1);
       return;
     }
-    // Un serveur StreamDeck autonome tourne déjà : on s'y rattache.
+    // Un serveur StreamSim autonome tourne déjà : on s'y rattache.
   }
   createTray();
   if (!process.argv.includes('--hidden')) showMain();
@@ -69,7 +100,7 @@ async function boot() {
 async function isDeckServer() {
   try {
     const res = await fetch(`http://127.0.0.1:${PORT}/api/status`);
-    return (await res.json()).app === 'streamdeck';
+    return (await res.json()).app === 'streamdeck'; // identifiant de protocole (inchangé)
   } catch {
     return false;
   }
@@ -92,7 +123,7 @@ function showMain() {
     height: 880,
     minWidth: 980,
     minHeight: 620,
-    title: 'StreamDeck',
+    title: 'StreamSim',
     icon: ICON,
     backgroundColor: '#0a0b10',
     autoHideMenuBar: true,
@@ -116,7 +147,7 @@ function showMain() {
     if (!trayHintShown && Notification.isSupported()) {
       trayHintShown = true;
       new Notification({
-        title: 'StreamDeck reste actif',
+        title: 'StreamSim reste actif',
         body: 'Le serveur continue de fonctionner en arrière-plan. Cliquez sur l’icône de la zone de notification pour rouvrir la configuration.',
         icon: ICON,
       }).show();
@@ -132,7 +163,7 @@ function showDeckPreview() {
   deckWindow = new BrowserWindow({
     width: 900,
     height: 620,
-    title: 'StreamDeck — Deck',
+    title: 'StreamSim — Deck',
     icon: ICON,
     backgroundColor: '#000000',
     autoHideMenuBar: true,
@@ -144,9 +175,9 @@ function showDeckPreview() {
 }
 
 // --- Mises à jour ----------------------------------------------------------------------------
-// Au lancement (puis toutes les 6 heures), StreamDeck lit les versions publiées sur GitHub.
+// Au lancement (puis toutes les 6 heures), StreamSim lit les versions publiées sur GitHub.
 // Si une version plus récente existe, une fenêtre propose de l'installer : le téléchargement
-// se fait alors en arrière-plan, puis StreamDeck redémarre sur la nouvelle version.
+// se fait alors en arrière-plan, puis StreamSim redémarre sur la nouvelle version.
 // Version installée (Windows, AppImage) : electron-updater télécharge et installe.
 // En développement, ou si le format ne se met pas à jour tout seul : lien de téléchargement.
 function createUpdater() {
@@ -189,7 +220,7 @@ function createUpdater() {
     if (state.state === 'ready') return; // une erreur tardive ne doit pas masquer une mise à jour prête
     const failedDownload = state.state === 'downloading';
     set({ state: 'error', canInstall: false, error: `Mise à jour impossible : ${String(e?.message ?? e).split('\n')[0]}` });
-    if (failedDownload) dialog.showMessageBox({ type: 'warning', title: 'StreamDeck', message: state.error, detail: `Vous pouvez télécharger la mise à jour depuis ${RELEASES_URL}.` });
+    if (failedDownload) dialog.showMessageBox({ type: 'warning', title: 'StreamSim', message: state.error, detail: `Vous pouvez télécharger la mise à jour depuis ${RELEASES_URL}.` });
   });
 
   const quitAndInstall = () => {
@@ -243,10 +274,10 @@ async function promptUpdate(u) {
     const parent = mainWindow?.isVisible() ? mainWindow : undefined;
     const options = {
       type: 'info',
-      title: 'Mise à jour de StreamDeck',
-      message: `StreamDeck ${u.latest} est disponible.`,
+      title: 'Mise à jour de StreamSim',
+      message: `StreamSim ${u.latest} est disponible.`,
       detail: u.canInstall
-        ? `Version installée : ${u.current}.\n\nLa nouvelle version se télécharge en arrière-plan, puis StreamDeck redémarre automatiquement. Vos touches et réglages sont conservés.`
+        ? `Version installée : ${u.current}.\n\nLa nouvelle version se télécharge en arrière-plan, puis StreamSim redémarre automatiquement. Vos touches et réglages sont conservés.`
         : `Version installée : ${u.current}.\n\nOuvrir la page de téléchargement ?`,
       buttons: [u.canInstall ? 'Mettre à jour maintenant' : 'Télécharger', 'Plus tard'],
       defaultId: 0,
@@ -265,8 +296,8 @@ async function promptUpdate(u) {
 async function checkUpdatesNow() {
   promptedVersion = null; // recherche demandée : on repropose la version même si elle a été refusée
   const u = await updater.check();
-  if (u.state === 'current') dialog.showMessageBox({ type: 'info', title: 'StreamDeck', message: `StreamDeck est à jour (version ${u.current}).` });
-  else if (u.state === 'error') dialog.showMessageBox({ type: 'warning', title: 'StreamDeck', message: u.error });
+  if (u.state === 'current') dialog.showMessageBox({ type: 'info', title: 'StreamSim', message: `StreamSim est à jour (version ${u.current}).` });
+  else if (u.state === 'error') dialog.showMessageBox({ type: 'warning', title: 'StreamSim', message: u.error });
   else if (u.state === 'available' && promptedVersion !== u.latest) promptUpdate(u);
 }
 
@@ -290,7 +321,7 @@ function updateMenuItem() {
 function createTray() {
   const image = nativeImage.createFromPath(TRAY_ICON);
   tray = new Tray(image.isEmpty() ? nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }) : image);
-  tray.setToolTip(`StreamDeck ${app.getVersion()}`);
+  tray.setToolTip(`StreamSim ${app.getVersion()}`);
   tray.on('click', showMain);
   tray.on('double-click', showMain);
   refreshTrayMenu();
@@ -304,7 +335,7 @@ function refreshTrayMenu() {
   const login = app.getLoginItemSettings();
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: `StreamDeck ${app.getVersion()}`, enabled: false },
+      { label: `StreamSim ${app.getVersion()}`, enabled: false },
       ...updateMenuItem(),
       { type: 'separator' },
       { label: 'Ouvrir la configuration', click: showMain },
@@ -327,7 +358,7 @@ function refreshTrayMenu() {
         click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] }),
       },
       { type: 'separator' },
-      { label: deck ? 'Quitter StreamDeck' : 'Quitter (serveur externe conservé)', click: quit },
+      { label: deck ? 'Quitter StreamSim' : 'Quitter (serveur externe conservé)', click: quit },
     ]),
   );
 }

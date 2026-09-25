@@ -8,6 +8,7 @@ export const DISCOVERY_MAGIC = 'STREAMDECK_DISCOVER';
 
 export function startDiscovery({ port, version, name = os.hostname(), log = console }) {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  // « streamdeck » : identifiant de protocole conservé (applications Android déjà installées).
   const reply = Buffer.from(JSON.stringify({ app: 'streamdeck', name, port, version }));
 
   socket.on('message', (msg, rinfo) => {

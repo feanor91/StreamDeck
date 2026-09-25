@@ -1,4 +1,4 @@
-﻿# Agent d'entrée Windows pour StreamDeck.
+﻿# Agent d'entrée Windows pour StreamSim.
 # Processus persistant : lit une commande JSON par ligne sur stdin et répond
 # une ligne JSON sur stdout. Garder le processus vivant évite ~300 ms de
 # démarrage PowerShell à chaque appui de touche.

@@ -25,7 +25,7 @@ data class Release(val version: String, val apkUrl: String, val pageUrl: String)
  * l'installeur d'Android (qui demande confirmation à l'utilisateur).
  */
 object Updater {
-    private const val REPO = "feanor91/StreamDeck"
+    private const val REPO = "feanor91/StreamSim"
     const val RELEASES_PAGE = "https://github.com/$REPO/releases/latest"
 
     /** Appel réseau bloquant : à lancer hors du fil principal. */
@@ -55,7 +55,7 @@ object Updater {
     fun download(context: Context, url: String, progress: (Int) -> Unit): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
-        val file = File(dir, "StreamDeck.apk")
+        val file = File(dir, "StreamSim.apk")
         val conn = open(url)
         try {
             if (conn.responseCode !in 200..299) error("téléchargement refusé (${conn.responseCode})")
@@ -85,7 +85,7 @@ object Updater {
         return file
     }
 
-    /** Sur Android 8+, l'utilisateur doit autoriser StreamDeck à installer des applications. */
+    /** Sur Android 8+, l'utilisateur doit autoriser StreamSim à installer des applications. */
     fun canInstall(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 
@@ -113,7 +113,7 @@ object Updater {
             conn.connectTimeout = 10_000
             conn.readTimeout = 20_000
             conn.instanceFollowRedirects = false
-            conn.setRequestProperty("User-Agent", "StreamDeck-Android")
+            conn.setRequestProperty("User-Agent", "StreamSim-Android")
             if (accept != null) conn.setRequestProperty("Accept", accept)
             val code = conn.responseCode
             if (code in 300..399) {
@@ -134,8 +134,8 @@ object Updater {
  */
 class ApkProvider : ContentProvider() {
     companion object {
-        fun uri(context: Context): Uri = Uri.parse("content://${context.packageName}.updates/StreamDeck.apk")
-        private fun file(context: Context) = File(File(context.cacheDir, "updates"), "StreamDeck.apk")
+        fun uri(context: Context): Uri = Uri.parse("content://${context.packageName}.updates/StreamSim.apk")
+        private fun file(context: Context) = File(File(context.cacheDir, "updates"), "StreamSim.apk")
     }
 
     override fun onCreate() = true
