@@ -1,7 +1,7 @@
 {
   "name": "streamdeck-clone",
   "productName": "StreamDeck",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Clone logiciel de Stream Deck : serveur PC, application de configuration et client Android.",
   "author": "StreamDeck",
   "license": "MIT",

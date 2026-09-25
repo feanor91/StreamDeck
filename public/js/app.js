@@ -6,6 +6,7 @@ import {
   libraryItemInfo, createFromLibrary, keyFace, isMac, isIconPath,
 } from './catalog.js';
 import { computeCells, placementError, findFreeSlot, keySpan, stateKey } from '/shared/layout.js';
+import { SIMHUB_PROPERTIES } from '/shared/simhub.js';
 import { MSFS_EVENTS, MSFS_EVENT_LABELS, MSFS_SIMVARS, MSFS_NUMERIC_SIMVARS, MSFS_UNITS, AVIA_ICONS, FBW_EVENTS, FBW_PRESETS, isLocalVar } from '/shared/msfs.js';
 
 const $ = (id) => document.getElementById(id);
@@ -352,6 +353,15 @@ function renderLibrary() {
   );
 }
 
+function renderSimhub() {
+  const pill = $('simhubPill');
+  const m = state.status?.simhub;
+  const on = !!(state.connected && m?.connected);
+  pill.dataset.state = on ? 'ok' : 'off';
+  pill.querySelector('span').textContent = on ? 'SimHub connecté' : 'SimHub';
+  pill.title = on ? `Connecté à SimHub (${m.host}:${m.port})` : m?.reason ?? 'SimHub non détecté';
+}
+
 function renderMsfs() {
   const pill = $('msfsPill');
   const m = state.status?.msfs;
@@ -421,6 +431,7 @@ async function checkUpdateNow() {
 
 function renderStatus() {
   renderMsfs();
+  renderSimhub();
   const pill = $('statusPill');
   const label = pill.querySelector('span');
   const s = state.status;
@@ -689,6 +700,10 @@ function actionFields(getAction, tag) {
       return [toggleEditor(getAction, tag)];
     case 'msfs':
       return msfsFields(getAction, tag);
+    case 'simhub':
+      return simhubFields(getAction, tag);
+    case 'display':
+      return [displayEditor(getAction, tag)];
     case 'dial':
       return [dialEditor(getAction, tag)];
     case 'slider':
@@ -1013,6 +1028,14 @@ function ensureDatalists() {
       h('datalist', { id: 'simvarList' }, ...known.filter(([v]) => !seen.has(v) && seen.add(v)).map(([v, label]) => h('option', { value: v }, label))),
     );
   }
+  let props = document.getElementById('simhubPropList');
+  if (!props) {
+    props = h('datalist', { id: 'simhubPropList' });
+    document.body.append(props);
+  }
+  const known = new Map(SIMHUB_PROPERTIES);
+  for (const p of state.simhubProperties ?? []) if (!known.has(p.name)) known.set(p.name, p.type);
+  props.replaceChildren(...[...known].map(([v, label]) => h('option', { value: v }, label)));
   let inputs = document.getElementById('inputEventList');
   if (!inputs) {
     inputs = h('datalist', { id: 'inputEventList' });
@@ -1025,40 +1048,100 @@ const textInput = (value, placeholder, oninput, extra = {}) =>
   h('input', { class: 'mono', value: value ?? '', placeholder, spellcheck: 'false', oninput, ...extra });
 
 /**
- * Source d'une valeur lue dans le simulateur : variable (SimVar ou « L: ») ou Input Event.
- * `obj()` renvoie l'objet à éditer ({ simvar, unit } ou { input }), `tag` groupe l'historique.
+ * Source d'une valeur lue en direct : variable MSFS (SimVar ou « L: »), Input Event
+ * MSFS 2024 ou propriété SimHub. `obj()` renvoie l'objet à éditer
+ * ({ simvar, unit }, { input } ou { simhub }), `tag` groupe l'historique.
  */
 function simSourceFields(obj, tag, { unitDefault = 'number', equals = false } = {}) {
   ensureDatalists();
   const o = obj();
-  const isInput = !!o.input;
+  const mode = 'simhub' in o ? 'simhub' : 'input' in o ? 'input' : 'var';
   const set = (patch, opts = { tag: `${tag}:src`, render: 'key' }) => commit(() => Object.assign(obj(), patch), opts);
+  const switchTo = (m) =>
+    commit(() => {
+      const x = obj();
+      for (const k of ['simvar', 'unit', 'input', 'simhub']) delete x[k];
+      if (m === 'var') Object.assign(x, { simvar: '', unit: unitDefault });
+      else x[m] = '';
+    });
+  const source = {
+    var: () =>
+      h('div', { class: 'row' },
+        h('label', { class: 'field', style: { flex: 2 } }, h('span', {}, 'Variable'),
+          textInput(o.simvar, 'ex. L:A32NX_FCU_AP_1_LIGHT_ON', (e) => set({ simvar: e.target.value.trim() }), { list: 'simvarList' })),
+        h('label', { class: 'field' }, h('span', {}, 'Unité'),
+          h('select', { onchange: (e) => set({ unit: e.target.value }, {}) },
+            ...MSFS_UNITS.map((u) => h('option', { value: u, selected: (o.unit || (isLocalVar(o.simvar) ? 'number' : unitDefault)) === u }, u))))),
+    input: () =>
+      h('div', { class: 'field' },
+        h('div', { class: 'input-with-btn' },
+          textInput(o.input, 'ex. LIGHTING_LANDING_1', (e) => set({ input: e.target.value.trim() }), { list: 'inputEventList' }),
+          h('button', { class: 'btn icon-only', title: 'Parcourir les commandes de l’avion chargé', onclick: () => openExplorer((name) => commit(() => (obj().input = name))) }, icon('target')),
+        ),
+        h('span', { class: 'hint' }, 'Commande de cockpit de l’avion chargé : utilisez le bouton pour parcourir la liste.')),
+    simhub: () =>
+      h('div', { class: 'field' },
+        h('div', { class: 'input-with-btn' },
+          textInput(o.simhub, 'ex. dcp.gd.SpeedKmh', (e) => set({ simhub: e.target.value.trim() }), { list: 'simhubPropList' }),
+          h('button', { class: 'btn icon-only', title: 'Charger la liste des propriétés depuis SimHub', onclick: loadSimhubProperties }, icon('target')),
+        ),
+        h('span', { class: 'hint' }, 'Propriété SimHub : « dcp.gd.X » pour DataCorePlugin.GameData.X, ou le nom complet copié depuis « Available properties » de SimHub.')),
+  };
   return [
     h(
       'div',
       { class: 'segmented' },
-      h('button', { class: isInput ? '' : 'on', onclick: () => commit(() => { const x = obj(); delete x.input; x.simvar ??= ''; x.unit ??= unitDefault; }) }, 'Variable'),
-      h('button', { class: isInput ? 'on' : '', onclick: () => commit(() => { const x = obj(); delete x.simvar; delete x.unit; x.input ??= ''; }) }, 'Input Event (MSFS 2024)'),
+      ...[['var', 'Variable'], ['input', 'Input Event'], ['simhub', 'SimHub']].map(([m, label]) =>
+        h('button', { class: mode === m ? 'on' : '', onclick: () => mode !== m && switchTo(m) }, label)),
     ),
-    isInput
-      ? h('div', { class: 'field' },
-          h('div', { class: 'input-with-btn' },
-            textInput(o.input, 'ex. LIGHTING_LANDING_1', (e) => set({ input: e.target.value.trim() }), { list: 'inputEventList' }),
-            h('button', { class: 'btn icon-only', title: 'Parcourir les commandes de l’avion chargé', onclick: () => openExplorer((name) => commit(() => (obj().input = name))) }, icon('target')),
-          ),
-          h('span', { class: 'hint' }, 'Commande de cockpit de l’avion chargé : utilisez le bouton pour parcourir la liste.'))
-      : h('div', { class: 'row' },
-          h('label', { class: 'field', style: { flex: 2 } }, h('span', {}, 'Variable'),
-            textInput(o.simvar, 'ex. L:A32NX_FCU_AP_1_LIGHT_ON', (e) => set({ simvar: e.target.value.trim() }), { list: 'simvarList' })),
-          h('label', { class: 'field' }, h('span', {}, 'Unité'),
-            h('select', { onchange: (e) => set({ unit: e.target.value }, {}) },
-              ...MSFS_UNITS.map((u) => h('option', { value: u, selected: (o.unit || (isLocalVar(o.simvar) ? 'number' : unitDefault)) === u }, u))))),
+    source[mode](),
     equals
       ? h('div', { class: 'row' },
           h('label', { class: 'field' }, h('span', {}, 'État 2 si la valeur vaut (facultatif)'),
-            h('input', { type: 'number', value: o.equals ?? '', placeholder: 'non nulle', oninput: (e) => set({ equals: e.target.value === '' ? undefined : Number(e.target.value) }) })),
+            h('input', {
+              type: mode === 'simhub' ? 'text' : 'number',
+              value: o.equals ?? '',
+              placeholder: 'non nulle',
+              oninput: (e) => {
+                const v = e.target.value.trim();
+                set({ equals: v === '' ? undefined : Number.isNaN(Number(v)) ? v : Number(v) });
+              },
+            })),
           h('label', { class: 'switch', style: { alignSelf: 'end', paddingBottom: '9px' } },
             h('input', { type: 'checkbox', checked: !!o.invert, onchange: (e) => commit(() => (obj().invert = e.target.checked)) }), 'Inverser'))
+      : null,
+  ];
+}
+
+// Propriétés proposées à la saisie : liste courante, complétée par celle de SimHub s'il est lancé.
+async function loadSimhubProperties() {
+  try {
+    const { properties } = await api.simhubProperties();
+    state.simhubProperties = properties;
+    ensureDatalists();
+    toast(`${properties.length} propriétés chargées depuis SimHub`, 'ok');
+  } catch (e) {
+    toast(e.message, 'err', 5000);
+  }
+}
+
+function simhubFields(getAction, tag) {
+  const a = getAction();
+  const mode = a.mode ?? 'click';
+  const sh = state.status?.simhub;
+  return [
+    textField(getAction, 'input', 'Nom de la commande', {
+      tag,
+      mono: true,
+      placeholder: 'ex. deck.limiteur',
+      hint: 'Nom libre (sans espace). Dans SimHub, « Controls and events » : associez ce nom à une action en appuyant sur la touche pendant que SimHub attend l’entrée.',
+    }),
+    h('span', { class: 'field-label' }, 'Déclenchement'),
+    h('div', { class: 'segmented' },
+      ...[['click', 'Appui bref'], ['press', 'Appuyer'], ['release', 'Relâcher']].map(([id, label]) =>
+        h('button', { class: mode === id ? 'on' : '', onclick: () => commit(() => (getAction().mode = id)) }, label))),
+    sh && !sh.connected
+      ? h('div', { class: 'note' }, icon('alert'), h('span', {}, sh.reason ?? 'SimHub non détecté.'))
       : null,
   ];
 }
@@ -1270,7 +1353,7 @@ function openExplorer(onPick = null) {
 // Bascule : état lu dans le simulateur (état réel, même si on agit dans le cockpit).
 function simSyncField(getAction, tag) {
   const a = getAction();
-  const on = !!(a.sync?.simvar || a.sync?.input);
+  const on = !!a.sync && ['simvar', 'input', 'simhub'].some((k) => k in a.sync);
   return h(
     'div',
     { class: 'field sim-sync' },
@@ -1283,9 +1366,9 @@ function simSyncField(getAction, tag) {
           else delete getAction().sync;
         }),
       }),
-      'État lu dans MSFS (SimConnect)'),
+      'État lu dans le simulateur (MSFS ou SimHub)'),
     ...(on ? simSourceFields(() => getAction().sync, `${tag}:sync`, { unitDefault: 'Bool', equals: true }) : []),
-    on ? h('span', { class: 'hint' }, 'L’état de la touche suit le simulateur : plus besoin de l’appui long pour se recaler. Pour une variable « L: », choisissez l’unité « number ».') : null,
+    on ? h('span', { class: 'hint' }, 'L’état de la touche suit le simulateur : plus besoin de l’appui long pour se recaler. Pour une variable « L: », choisissez l’unité « number ». Une propriété SimHub texte peut être comparée à un texte (ex. « R »).') : null,
   );
 }
 
@@ -1331,7 +1414,7 @@ function dialEditor(getAction, tag) {
   const a = getAction();
   const sens = a.sensitivity ?? 'normal';
   const display = a.display;
-  const shown = !!(display?.simvar || display?.input);
+  const shown = !!display && ['simvar', 'input', 'simhub'].some((k) => k in display);
   const fmt = (label, prop, type = 'text', placeholder = '') =>
     h('label', { class: 'field' }, h('span', {}, label),
       h('input', {
@@ -1363,7 +1446,7 @@ function dialEditor(getAction, tag) {
             getAction().display = { simvar, unit, suffix, decimals, wrap360: unit === 'degrees' };
           }),
         }),
-        'Afficher une valeur de MSFS sur la touche'),
+        'Afficher une valeur du simulateur sur la touche (MSFS ou SimHub)'),
       ...(shown
         ? [
             ...simSourceFields(() => getAction().display, `${tag}:display`, { unitDefault: 'number' }),
@@ -1373,6 +1456,31 @@ function dialEditor(getAction, tag) {
           ]
         : []),
     ),
+  );
+}
+
+function displayEditor(getAction, tag) {
+  getAction().display ??= { simhub: '', decimals: 0 };
+  const d = getAction().display;
+  const fmt = (label, prop, type = 'text', placeholder = '') =>
+    h('label', { class: 'field' }, h('span', {}, label),
+      h('input', {
+        type, value: d[prop] ?? '', placeholder,
+        oninput: (e) => commit(() => (getAction().display[prop] = type === 'number' ? (e.target.value === '' ? undefined : Number(e.target.value)) : e.target.value), { tag: `${tag}:fmt:${prop}`, render: 'key' }),
+      }));
+  const flag = (prop, label) =>
+    h('label', { class: 'switch' },
+      h('input', { type: 'checkbox', checked: !!d[prop], onchange: (e) => commit(() => (getAction().display[prop] = e.target.checked)) }), label);
+  return h(
+    'div',
+    { class: 'field' },
+    h('div', { class: 'note info' }, icon('info'),
+      h('span', {}, 'La touche affiche en direct une valeur de SimHub (vitesse, rapport, carburant, temps au tour…) ou de MSFS. Un appui peut en plus déclencher une action.')),
+    h('span', { class: 'field-label' }, 'Valeur affichée'),
+    ...simSourceFields(() => getAction().display, `${tag}:display`, { unitDefault: 'number' }),
+    h('div', { class: 'row' }, fmt('Suffixe', 'suffix', 'text', ' km/h'), fmt('Décimales', 'decimals', 'number', '0'), fmt('Multiplier par', 'scale', 'number', '1')),
+    h('div', { class: 'row' }, flag('time', 'Durée (temps au tour 1:23.456)'), flag('sign', 'Afficher le signe (+)')),
+    h('div', { class: 'steps' }, innerActionCard('Appui', getAction, 'press', tag, { optional: true })),
   );
 }
 
@@ -1388,7 +1496,7 @@ function sliderEditor(getAction, tag) {
         oninput: (e) => commit(() => (obj()[prop] = Number(e.target.value)), { tag: `${tag}:${prop}`, render: 'key' }),
       }),
       hint ? h('span', { class: 'hint' }, hint) : null);
-  const synced = !!(a.sync?.simvar || a.sync?.input);
+  const synced = !!a.sync && ['simvar', 'input', 'simhub'].some((k) => k in a.sync);
 
   const valueMode = [
     h('label', { class: 'field' }, h('span', {}, 'Commande MSFS qui reçoit la position'),
@@ -1488,7 +1596,7 @@ function sizeField(i) {
   );
 }
 
-const INNER_TYPES = ['msfs', 'hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi'];
+const INNER_TYPES = ['msfs', 'simhub', 'hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi'];
 
 // Éditeur d'une touche à bascule : une action par état (ou la même pour les deux).
 function toggleEditor(getAction, tag) {
@@ -2262,6 +2370,10 @@ function connectEvents() {
     update: (u) => {
       state.update = u;
       renderUpdate();
+    },
+    simhub: (m) => {
+      if (state.status) state.status.simhub = m;
+      renderSimhub();
     },
     msfs: (m) => {
       if (state.status) state.status.msfs = m;

@@ -113,9 +113,11 @@ function buildKey(pg, cell) {
       dataset: { index: i },
       style: { gridColumn: `${cell.col + 1} / span ${cell.w}`, gridRow: `${cell.row + 1} / span ${cell.h}` },
     },
-    keyFace(key, toggleState(pg.id, i)),
+    keyFace(key, toggleState(pg.id, i), key?.action?.type === 'display' ? liveOf(pg.id, i, cell) : undefined),
   );
   if (!key) return el;
+  // Afficheur : redessiné à chaque nouvelle valeur reçue.
+  if (key.action?.type === 'display') el.repaint = () => el.querySelector('.keyface')?.replaceWith(keyFace(key, 0, liveOf(pg.id, i, cell)));
 
   const isToggle = key.action?.type === 'toggle';
   let timer = null;

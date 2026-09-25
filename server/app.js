@@ -12,10 +12,13 @@ import { stateKey } from '../shared/layout.js';
 import { startDiscovery } from './discovery.js';
 import { createReleaseChecker } from './update.js';
 import { createMsfs } from './msfs.js';
+import { createSimhub } from './simhub.js';
 import { normalizeVar, defaultUnit } from '../shared/msfs.js';
 import { clamp, levelToValue, valueToLevel, notchDelta, MAX_STEPS } from '../shared/controls.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Actions transmises directement au simulateur (pas de frappe clavier à espacer).
+const DIRECT_ACTIONS = new Set(['msfs', 'simhub']);
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -130,6 +133,9 @@ export async function startDeckServer({
   discovery = true,
   msfs: msfsEnabled = true,
   msfsLoader, // tests : remplace le module node-simconnect par une imitation
+  simhub: simhubEnabled = true,
+  simhubConnect, // tests : remplace la connexion TCP vers SimHub
+  simhubPort,
   updater: customUpdater, // application PC : téléchargement et installation (electron-updater)
   updateCheck = true, // recherche automatique des nouvelles versions sur GitHub
   log = console,
@@ -147,26 +153,36 @@ export async function startDeckServer({
   // Liaisons entre les touches et les variables du simulateur :
   //  - bascule avec `sync.simvar`      → état on/off ;
   //  - bouton rotatif avec `display`   → valeur affichée (ex. cap sélecté) ;
-  //  - curseur avec `sync`             → position du curseur.
+  //  - curseur avec `sync`             → position du curseur ;
+  //  - afficheur avec `display`        → valeur affichée.
+  // La source est une variable MSFS (simvar), un Input Event MSFS 2024 (input)
+  // ou une propriété SimHub (simhub).
   const liveValues = {}; // touche → dernière valeur affichée
   const liveFlags = {}; // touche → { dashes, managed, std } (afficheurs type FCU)
   function simBindings() {
     const out = [];
     const src = (o, onOff) =>
-      o.input ? { input: o.input } : { simvar: normalizeVar(o.simvar), unit: o.unit || defaultUnit(o.simvar, onOff) };
+      o.simhub
+        ? { simhub: o.simhub }
+        : o.input
+          ? { input: o.input }
+          : { simvar: normalizeVar(o.simvar), unit: o.unit || defaultUnit(o.simvar, onOff) };
+    const bound = (o) => !!(o?.simvar || o?.input || o?.simhub);
     for (const p of store.config?.profiles ?? []) {
       for (const pg of p.pages) {
         for (const [index, key] of Object.entries(pg.keys)) {
           const a = key?.action;
           const sk = stateKey(p.id, pg.id, index);
-          if (a?.type === 'toggle' && (a.sync?.simvar || a.sync?.input)) {
+          if (a?.type === 'toggle' && bound(a.sync)) {
             out.push({ sk, kind: 'toggle', ...src(a.sync, true), invert: !!a.sync.invert, equals: a.sync.equals });
-          } else if (a?.type === 'dial' && (a.display?.simvar || a.display?.input)) {
+          } else if (a?.type === 'display' && bound(a.display)) {
+            out.push({ sk, kind: 'value', ...src(a.display, false) });
+          } else if (a?.type === 'dial' && bound(a.display)) {
             out.push({ sk, kind: 'value', ...src(a.display, false) });
             for (const flag of ['dashes', 'managed', 'stdVar']) {
               if (a.display[flag]) out.push({ sk, kind: 'flag', flag, simvar: normalizeVar(a.display[flag]), unit: 'number' });
             }
-          } else if (a?.type === 'slider' && (a.sync?.simvar || a.sync?.input)) {
+          } else if (a?.type === 'slider' && bound(a.sync)) {
             out.push({ sk, kind: 'level', ...src(a.sync, false), min: a.sync.min ?? 0, max: a.sync.max ?? 100 });
           }
         }
@@ -178,7 +194,11 @@ export async function startDeckServer({
   function applyBinding(b, value) {
     if (b.kind === 'toggle') {
       const v = Number(value);
-      const hit = b.equals !== undefined && b.equals !== null && b.equals !== '' ? Math.abs(v - Number(b.equals)) < 1e-6 : v !== 0;
+      const hasEquals = b.equals !== undefined && b.equals !== null && b.equals !== '';
+      // Valeur texte (propriété SimHub) : comparée telle quelle, sinon « non vide ».
+      const hit = hasEquals
+        ? String(value) === String(b.equals) || Math.abs(v - Number(b.equals)) < 1e-6
+        : Number.isNaN(v) ? String(value) !== '' : v !== 0;
       const on = hit !== b.invert ? 1 : 0;
       if (toggles.get(b.sk) === on) return;
       toggles.set(b.sk, on);
@@ -205,7 +225,7 @@ export async function startDeckServer({
   function applySimvar(simvar, value, unit = 'Bool') {
     if (value === null || value === undefined) return;
     for (const b of simBindings()) {
-      if (b.input || b.simvar !== simvar || b.unit.toLowerCase() !== String(unit).toLowerCase()) continue;
+      if (b.input || b.simhub || b.simvar !== simvar || b.unit.toLowerCase() !== String(unit).toLowerCase()) continue;
       applyBinding(b, value);
     }
   }
@@ -213,6 +233,10 @@ export async function startDeckServer({
   function applyInput(name, value) {
     if (value === null || value === undefined || typeof value === 'string') return;
     for (const b of simBindings()) if (b.input === name) applyBinding(b, value);
+  }
+
+  function applySimhub(name, value) {
+    for (const b of simBindings()) if (b.simhub === name) applyBinding(b, value);
   }
 
   const msfs = createMsfs({
@@ -223,11 +247,21 @@ export async function startDeckServer({
     onInput: applyInput,
   });
 
+  const simhub = createSimhub({
+    log,
+    ...(simhubConnect ? { connect: simhubConnect } : {}),
+    ...(simhubPort ? { port: simhubPort } : {}),
+    onStatus: (s) => broadcast('simhub', s),
+    onValue: applySimhub,
+  });
+
   function refreshSimWatch() {
     const bindings = simBindings();
-    msfs.watch(bindings.map((b) => (b.input ? { input: b.input } : { simvar: b.simvar, unit: b.unit })));
+    const fromMsfs = bindings.filter((b) => !b.simhub);
+    msfs.watch(fromMsfs.map((b) => (b.input ? { input: b.input } : { simvar: b.simvar, unit: b.unit })));
+    simhub.watch(bindings.filter((b) => b.simhub).map((b) => b.simhub));
     for (const b of bindings) {
-      const v = b.input ? msfs.inputValue(b.input) : msfs.value(b.simvar, b.unit);
+      const v = b.simhub ? simhub.value(b.simhub) : b.input ? msfs.inputValue(b.input) : msfs.value(b.simvar, b.unit);
       if (v !== null && v !== undefined) applyBinding(b, v);
     }
   }
@@ -254,7 +288,7 @@ export async function startDeckServer({
       const n = Math.min(Math.abs(delta), MAX_STEPS);
       for (let i = 0; i < n; i++) {
         await runAction(executor, act, 0, ctx);
-        if (act.type !== 'msfs') await sleep(25); // laisse le logiciel encaisser les frappes clavier
+        if (!DIRECT_ACTIONS.has(act.type)) await sleep(25); // laisse le logiciel encaisser les frappes clavier
       }
       return { ok: true, steps: n };
     }
@@ -269,7 +303,7 @@ export async function startDeckServer({
         if (d && !act?.type) throw new Error(`Aucune action « ${d > 0 ? '+' : '−'} » définie pour ce curseur.`);
         for (let i = 0; i < Math.min(Math.abs(d), MAX_STEPS); i++) {
           await runAction(executor, act, 0, ctx);
-          if (act.type !== 'msfs') await sleep(25);
+          if (!DIRECT_ACTIONS.has(act.type)) await sleep(25);
         }
       }
       const saved = toggles.setLevel(sk, level);
@@ -278,7 +312,7 @@ export async function startDeckServer({
     }
     throw httpError('Geste non pris en charge par cette touche.', 400);
   }
-  const ctx = { msfs };
+  const ctx = { msfs, simhub };
 
   const updater = customUpdater ?? createReleaseChecker({ current: VERSION, log, auto: updateCheck });
   const stopUpdateEvents = updater.onChange((u) => broadcast('update', u));
@@ -331,6 +365,7 @@ export async function startDeckServer({
           port,
           layouts: LAYOUTS,
           msfs: msfsEnabled ? msfs.status : { available: false, connected: false, reason: 'Liaison MSFS désactivée.' },
+          simhub: simhubEnabled ? simhub.status : { available: false, connected: false, reason: 'Liaison SimHub désactivée.' },
         });
 
       case 'GET /api/update':
@@ -359,6 +394,17 @@ export async function startDeckServer({
           broadcast('state', { key: sk, state });
           return send(res, 200, { ok: true, state });
         }
+        // Afficheur : l'appui déclenche l'action facultative associée.
+        if (key.action?.type === 'display') {
+          try {
+            if (key.action.press?.type) await runAction(executor, key.action.press, 0, ctx);
+            broadcast('press', { profileId, pageId, index, ok: true });
+            return send(res, 200, { ok: true });
+          } catch (e) {
+            broadcast('press', { profileId, pageId, index, ok: false, error: e.message });
+            throw Object.assign(e, { status: 422 });
+          }
+        }
         if (key.action?.type === 'dial' || key.action?.type === 'slider') {
           try {
             const result = await handleContinuous(key, sk, input);
@@ -375,7 +421,9 @@ export async function startDeckServer({
             if (!inner?.type) throw new Error('Aucune action définie pour cet état de la bascule.');
             await runAction(executor, inner, 0, ctx);
             // Bascule synchronisée avec MSFS : l'état viendra du simulateur lui-même.
-            const simSynced = key.action.sync?.simvar && msfs.status.connected;
+            const sync = key.action.sync;
+            const simSynced =
+              ((sync?.simvar || sync?.input) && msfs.status.connected) || (sync?.simhub && simhub.status.connected);
             if (!simSynced) {
               const state = toggles.set(sk, !toggles.get(sk));
               broadcast('state', { key: sk, state });
@@ -420,6 +468,16 @@ export async function startDeckServer({
         try {
           const value = body.input ? await msfs.readInput(body.input) : await msfs.readVar(body.var, body.unit || 'number');
           return send(res, 200, { value });
+        } catch (e) {
+          throw Object.assign(e, { status: 409 });
+        }
+      }
+
+      // Propriétés annoncées par SimHub (commande « help » du Property Server).
+      case 'GET /api/simhub/properties': {
+        requireAdmin(req);
+        try {
+          return send(res, 200, { properties: await simhub.properties() });
         } catch (e) {
           throw Object.assign(e, { status: 409 });
         }
@@ -478,6 +536,7 @@ export async function startDeckServer({
 
   const disco = discovery ? startDiscovery({ port, version: VERSION, log }) : null;
   if (msfsEnabled) msfs.start();
+  if (simhubEnabled) simhub.start();
 
   const ready = executor.check().then((s) => {
     executorStatus = s;
@@ -496,6 +555,7 @@ export async function startDeckServer({
       if (!customUpdater) updater.close();
       disco?.close();
       msfs.close();
+      simhub.close();
       await toggles.flush().catch(() => {});
       for (const res of clients) res.end();
       clients.clear();
