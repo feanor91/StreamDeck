@@ -621,6 +621,36 @@ select optgroup {
   height: 30cqmin;
 }
 
+/* ---------- Afficheur ---------- */
+.keyface.kf-display-key {
+  --len: 3;
+}
+.kf-display-key:has(.kf-title) .kf-display-value {
+  margin-bottom: 12cqmin;
+}
+.kf-display-value {
+  /* Plus le texte est long, plus il est petit, pour tenir sur la touche. */
+  font-size: clamp(12cqmin, calc(92cqmin / (var(--len) * 0.62 + 0.4)), 46cqmin);
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.kf-display-key .kf-display-icon {
+  position: absolute;
+  top: 7%;
+  left: 8%;
+  font-size: 14cqmin;
+  line-height: 1;
+}
+.kf-display-key img.kf-display-icon {
+  width: 16cqmin;
+  height: 16cqmin;
+}
+
 /* ---------- Curseur ---------- */
 .keyface.kf-slider-key {
   --level: 0;

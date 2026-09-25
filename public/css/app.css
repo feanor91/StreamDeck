@@ -85,7 +85,7 @@ body {
   color: var(--text);
   border-color: color-mix(in srgb, var(--ok) 45%, transparent);
 }
-.status-pill.update-pill[hidden] {
+.status-pill[hidden] {
   display: none;
 }
 
@@ -218,15 +218,55 @@ body {
   padding: 4px 12px 20px;
 }
 .lib-group {
-  margin-top: 14px;
+  margin-top: 4px;
 }
-.lib-group h3 {
-  margin: 0 8px 6px;
+.lib-group.open {
+  margin-bottom: 10px;
+}
+.lib-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
   font-size: 11px;
   font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.07em;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.lib-head:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.lib-head:disabled {
+  cursor: default;
+}
+.lib-head span:not(.chev) {
+  flex: 1;
+}
+.lib-head small {
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0;
   color: var(--faint);
+}
+.lib-head .chev {
+  display: inline-flex;
+  transition: transform 0.15s var(--ease, ease);
+}
+.lib-head .chev .i {
+  width: 14px;
+  height: 14px;
+}
+.lib-group.open .lib-head .chev {
+  transform: rotate(90deg);
 }
 .lib-item {
   display: flex;

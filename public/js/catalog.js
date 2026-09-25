@@ -3,6 +3,7 @@ import { h } from './dom.js';
 import { faceFor } from '/shared/layout.js';
 import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS, FBW_PRESETS } from '/shared/msfs.js';
 import { formatDisplay } from '/shared/controls.js';
+import { SIMHUB_PRESETS } from '/shared/simhub.js';
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -95,6 +96,31 @@ export const ACTION_TYPES = {
       if (a.kind === 'var') return a.var ? `${a.var} : ${ops[a.op ?? 'set']} ${a.op === 'toggle' ? '' : a.value ?? 0}`.trim() : 'Aucune variable choisie';
       if (a.kind === 'input') return a.input ? `${a.input} : ${ops[a.op ?? 'set']} ${a.op === 'toggle' ? '' : a.value ?? 0}`.trim() : 'Aucune commande de cockpit choisie';
       return a.event ? MSFS_EVENT_LABELS[a.event] ?? a.event : 'Aucune commande choisie';
+    },
+  },
+  simhub: {
+    label: 'SimHub',
+    long: 'Commande SimHub',
+    desc: 'Déclenche un « Control » SimHub',
+    icon: '🏁',
+    color: '#ef4444',
+    create: () => ({ type: 'simhub', input: '', mode: 'click' }),
+    face: { icon: '🏁', color: '#7f1d1d' },
+    summary: (a) =>
+      a.input ? `${a.input}${a.mode === 'press' ? ' (appui)' : a.mode === 'release' ? ' (relâchement)' : ''}` : 'Aucune commande choisie',
+  },
+  display: {
+    label: 'Afficheur',
+    long: 'Afficheur',
+    desc: 'Affiche une valeur en direct (SimHub, MSFS)',
+    icon: '🔢',
+    color: '#06b6d4',
+    create: () => ({ type: 'display', display: { simhub: 'dcp.gd.SpeedKmh', decimals: 0 }, press: null }),
+    face: { icon: null, color: '#111827', title: 'Afficheur' },
+    summary: (a) => {
+      const d = a.display ?? {};
+      const src = d.simhub ? `SimHub : ${d.simhub}` : d.input ? `MSFS : ${d.input}` : d.simvar ? `MSFS : ${d.simvar}` : 'Aucune valeur choisie';
+      return a.press?.type ? `${src} · appui : ${ACTION_TYPES[a.press.type]?.summary(a.press) ?? ''}` : src;
     },
   },
   dial: {
@@ -223,6 +249,10 @@ export const LIBRARY = [
     items: FBW_PRESETS,
   },
   {
+    group: 'SimHub',
+    items: [{ type: 'simhub' }, { type: 'display' }, ...SIMHUB_PRESETS],
+  },
+  {
     group: 'Simulation (raccourcis clavier)',
     items: [
       {
@@ -279,9 +309,9 @@ export function libraryItemInfo(item) {
     // Préréglage complet (ex. MSFS) : action et apparence fournies.
     return {
       label: item.label,
-      desc: { toggle: 'MSFS · état synchronisé', dial: 'MSFS · bouton rotatif', slider: 'MSFS · curseur' }[item.action.type] ?? 'MSFS · commande',
+      desc: item.desc ?? { toggle: 'MSFS · état synchronisé', dial: 'MSFS · bouton rotatif', slider: 'MSFS · curseur' }[item.action.type] ?? 'MSFS · commande',
       icon: item.face.icon ?? ACTION_TYPES[item.action.type]?.icon,
-      color: '#0ea5e9',
+      color: item.desc?.startsWith('SimHub') ? '#ef4444' : '#0ea5e9',
     };
   }
   const t = ACTION_TYPES[item.type];
@@ -355,6 +385,21 @@ function dialFace(key, live) {
   return el;
 }
 
+// Afficheur : grande valeur en direct, titre en dessous.
+function displayFace(key, live) {
+  const el = h('div', { class: 'keyface kf-display-key' });
+  el.style.setProperty('--key-color', key.color || '#111827');
+  const text = formatDisplay(live.value, key.action?.display ?? {}, live.flags);
+  const value = h('span', { class: 'kf-display-value' }, text);
+  // Taille adaptée à la longueur du texte (« 3 » en très grand, « 1:23.456 » plus petit).
+  value.style.setProperty('--len', Math.max(1, text.length));
+  const ic = iconNode(key.icon, 'kf-display-icon');
+  if (ic) el.append(ic);
+  el.append(value);
+  if (key.showTitle !== false && key.title) el.append(h('span', { class: 'kf-title' }, key.title));
+  return el;
+}
+
 // Curseur : piste, remplissage selon la position, poignée ; vertical si la touche est plus haute que large.
 function sliderFace(key, live) {
   const vertical = live.vertical !== false;
@@ -378,6 +423,7 @@ export function keyFace(rawKey, state = 0, live = {}) {
   if (!rawKey) return h('div', { class: 'keyface empty' });
   if (rawKey.action?.type === 'dial') return dialFace(rawKey, live);
   if (rawKey.action?.type === 'slider') return sliderFace(rawKey, live);
+  if (rawKey.action?.type === 'display') return displayFace(rawKey, live);
   const key = faceFor(rawKey, state);
   const showTitle = key.showTitle !== false && key.title;
   const hasIcon = !!key.icon;

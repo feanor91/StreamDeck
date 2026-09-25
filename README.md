@@ -59,6 +59,12 @@ une grille pensée pour le paysage (ex. 3×5) s'affiche en 5×3 (lignes et colon
 inversées, touches fusionnées comprises) pour garder des touches presque carrées ;
 icônes et titres s'agrandissent ou rétrécissent avec les touches.
 
+**Changer de page** : glissez le doigt vers la gauche (page suivante) ou vers la
+droite (page précédente), n'importe où sur la grille ; les points en haut de
+l'écran restent utilisables. Une touche ne se déclenche qu'au relâchement du
+doigt : un glissement ne l'active donc pas. Les boutons rotatifs et curseurs
+gardent leur propre glissement.
+
 Sur **Android 7 à 9**, l'affichage du Deck repose sur **Google Chrome** (et sur
 **Android System WebView** à partir d'Android 10) : mettez-le à jour depuis le Play
 Store. L'application prévient au démarrage si la version est trop ancienne.
@@ -100,7 +106,9 @@ versions publiées. La mise à jour automatique d'Android fonctionne à partir d
 ## Interface de configuration
 
 - **Bibliothèque d'actions** (à gauche) : glissez une action sur une touche, ou
-  cliquez dessus pour l'appliquer à la touche sélectionnée.
+  cliquez dessus pour l'appliquer à la touche sélectionnée. Les groupes sont
+  repliés par défaut : cliquez sur un titre pour le déplier (l'état est mémorisé).
+  Une recherche déplie automatiquement les groupes qui contiennent un résultat.
 - **Grille** (au centre) : glissez une touche sur une autre pour les échanger,
   ou sur l'onglet d'une page pour l'y déplacer. Clic droit : tester, copier,
   dupliquer, déplacer, effacer.
@@ -130,6 +138,8 @@ Raccourcis clavier : flèches pour se déplacer, `Suppr` pour effacer,
 | Page | Change la page du Deck (page précise, suivante ou précédente) |
 | Multi-actions | Enchaîne plusieurs actions avec des pauses |
 | Commande MSFS | Envoie une commande à Microsoft Flight Simulator (SimConnect) |
+| Commande SimHub | Déclenche un « Control » SimHub (voir plus bas) |
+| Afficheur | Affiche en direct une valeur de SimHub ou de MSFS (vitesse, rapport, temps au tour…) ; un appui peut déclencher une action |
 | Bouton rotatif | Tourner (glisser le doigt) pour « + » / « − », appuyer pour valider ; peut afficher une valeur du simulateur |
 | Curseur | Glisser pour régler une position (gaz, volets…) ou envoyer des crans « + » / « − » |
 | Bascule (2 états) | Alterne entre deux états (ex. train rentré / sorti) : titre, icône, couleur et action propres à chaque état |
@@ -215,6 +225,40 @@ FlyByWire, sans module supplémentaire :
 
 La liaison utilise la bibliothèque [node-simconnect](https://github.com/EvenAR/node-simconnect)
 (licence LGPL-3.0).
+
+### SimHub
+
+StreamDeck dialogue avec [SimHub](https://www.simhubdash.com/) grâce au plugin
+gratuit **SimHub Property Server** ([pre-martin/SimHubPropertyServer](https://github.com/pre-martin/SimHubPropertyServer)) :
+
+1. Téléchargez `PropertyServer.dll` depuis la page *Releases* du plugin et copiez-le
+   dans le dossier d'installation de SimHub (SimHub 9.6 minimum).
+2. Relancez SimHub et activez le plugin (*Settings → Plugins*).
+3. La pastille **SimHub** de l'interface de configuration passe au vert.
+   StreamDeck se connecte à `127.0.0.1:18082` et se reconnecte tout seul si
+   SimHub est relancé (autre PC ou autre port : variables d'environnement
+   `SIMHUB_HOST` et `SIMHUB_PORT`).
+
+Ce que l'on peut faire :
+
+- **Afficheurs** (groupe *SimHub* de la bibliothèque) : vitesse, rapport, régime,
+  carburant, position, tours, tour en cours, dernier et meilleur tour, niveaux
+  d'antipatinage et d'ABS, répartition de freinage… La valeur se met à jour en
+  direct (10 fois par seconde au plus). Toute propriété SimHub peut être affichée :
+  `dcp.gd.X` pour `DataCorePlugin.GameData.X`, ou le nom complet copié dans
+  *Available properties* de SimHub. Le bouton ◎ charge la liste des propriétés
+  connues depuis SimHub. Options : suffixe, décimales, format « temps au tour ».
+- **Bascules synchronisées** : l'état d'une touche suit une propriété SimHub
+  (limiteur de stand, contact, DRS…). L'action de la touche reste au choix, par
+  exemple la touche clavier du jeu. Une propriété texte peut être comparée à un
+  texte (ex. rapport « R »).
+- **Commande SimHub** : déclenche un « Control » SimHub. Donnez-lui un nom libre
+  (ex. `deck.dash`) ; dans SimHub, *Controls and events*, créez un mappage et
+  appuyez sur la touche du Deck quand SimHub attend l'entrée. Vous pouvez ainsi
+  changer d'écran de tableau de bord, régler le ShakeIt, etc. Modes : appui bref,
+  appuyer ou relâcher (pour un maintien).
+- **Boutons rotatifs** et **curseurs** : leur valeur affichée ou leur position
+  peut aussi venir de SimHub.
 
 ### Boutons rotatifs et curseurs
 
@@ -347,6 +391,8 @@ server/
   index.js            Lancement du serveur seul (npm start)
   discovery.js        Découverte réseau (UDP 3211) pour l'application Android
   msfs.js             Liaison Microsoft Flight Simulator (SimConnect)
+  simhub.js           Liaison SimHub (plugin Property Server, TCP 18082)
+  update.js           Recherche des nouvelles versions publiées sur GitHub
   states.js           États des touches à bascule
   store.js            Configuration (validation, écriture atomique)
   actions.js          Exécution des actions
@@ -355,6 +401,7 @@ shared/keys.js        Définition des touches, commune au serveur et à l'interf
 shared/layout.js      Placement des touches (fusion, orientation), bascules
 shared/controls.js    Boutons rotatifs et curseurs : conversions, affichage des valeurs
 shared/msfs.js        Catalogue MSFS : commandes, variables, préréglages
+shared/simhub.js      Catalogue SimHub : propriétés courantes, préréglages
 public/icons/avia/    Icônes aviation (SVG)
 public/               Interface de configuration (index.html) et Deck (deck.html)
 desktop/              Application PC (Electron) : fenêtre, zone de notification

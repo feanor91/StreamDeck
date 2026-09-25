@@ -14,11 +14,15 @@ export const DIAL_SENSITIVITY = { fine: 28, normal: 16, fast: 8 };
  * Options de `display` : decimals, suffix, scale, wrap360 (cap 1 à 360),
  * pad (zéros devant, ex. « 045 »), sign (« +1500 »), machAuto (0,78 si < 1).
  * `flags` (afficheurs type FCU) : dashes → « --- », managed → point « • », std → « STD ».
+ * Valeurs texte (ex. rapport « N » de SimHub) : affichées telles quelles.
+ * `time` : durée en secondes affichée en « 1:23.456 » (temps au tour).
  */
 export function formatDisplay(value, display = {}, flags = null) {
   if (flags?.std) return 'STD';
   if (flags?.dashes) return `---${flags?.managed ? '•' : ''}`;
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+  if (typeof value === 'string' && value !== '' && Number.isNaN(Number(value))) return `${value}${display.suffix ?? ''}`;
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return '—';
+  if (display.time) return formatDuration(Number(value), display.decimals ?? 3);
   let v = Number(value) * (Number(display.scale) || 1);
   let decimals = clamp(Number(display.decimals) || 0, 0, 3);
   if (display.machAuto && Math.abs(v) > 0 && Math.abs(v) < 1) decimals = 2;
@@ -31,6 +35,20 @@ export function formatDisplay(value, display = {}, flags = null) {
   if (display.pad && !decimals) text = text.padStart(Number(display.pad), '0');
   const sign = v < 0 ? '−' : display.sign && v > 0 ? '+' : '';
   return `${sign}${text}${display.suffix ?? ''}${flags?.managed ? '•' : ''}`;
+}
+
+/** Secondes → « 1:23.456 » (ou « 1:02:03.4 » au-delà d'une heure). */
+export function formatDuration(seconds, decimals = 3) {
+  const d = clamp(Number(decimals) || 0, 0, 3);
+  const neg = seconds < 0;
+  const unit = 10 ** d;
+  const total = Math.round(Math.abs(seconds) * unit);
+  const whole = Math.floor(total / unit);
+  const frac = d ? `.${String(total % unit).padStart(d, '0')}` : '';
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const s = String(whole % 60).padStart(2, '0');
+  return `${neg ? '−' : ''}${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${s}${frac}`;
 }
 
 /** Position 0..1 d'un curseur → valeur envoyée (ex. 0..16383 pour THROTTLE_SET). */

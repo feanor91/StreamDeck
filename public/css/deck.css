@@ -110,6 +110,13 @@ body {
   flex: 1;
   min-height: 0;
   padding: 4px 10px 10px;
+  overflow: hidden;
+}
+/* Les gestes (glisser pour changer de page) sont gérés par le Deck, pas par le navigateur. */
+.deck-stage,
+.deck-stage .dkey,
+.deck-stage .dkey * {
+  touch-action: none;
 }
 .deck-grid {
   --cols: 5;

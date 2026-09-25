@@ -5,7 +5,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Types d'action exécutés côté serveur. Les actions de navigation ("page")
 // sont gérées par la surface Deck elle-même.
-export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle', 'msfs', 'dial', 'slider'];
+export const SERVER_ACTIONS = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'multi', 'delay', 'toggle', 'msfs', 'simhub', 'dial', 'slider', 'display'];
 
 /**
  * Touche à bascule : action envoyée selon l'état courant (0 = état 1, 1 = état 2).
@@ -65,7 +65,7 @@ export async function applyOperation(action, read, write) {
   throw new Error(`Opération inconnue : ${op}`);
 }
 
-// `ctx.msfs` : liaison SimConnect (actions « msfs »).
+// `ctx.msfs` : liaison SimConnect (actions « msfs ») ; `ctx.simhub` : liaison SimHub.
 export async function runAction(executor, action, depth = 0, ctx = {}) {
   if (!action || !action.type) throw new Error('Aucune action configurée sur cette touche.');
   if (depth > 5) throw new Error('Multi-action trop imbriquée.');
@@ -141,6 +141,15 @@ export async function runAction(executor, action, depth = 0, ctx = {}) {
       if (!action.event) throw new Error('Aucun événement MSFS choisi.');
       return ctx.msfs.send(action.event, action.value);
     }
+    case 'simhub': {
+      if (!ctx.simhub) throw new Error('Liaison SimHub indisponible.');
+      if (!action.input) throw new Error('Aucune commande SimHub choisie.');
+      return ctx.simhub.trigger(action.input, action.mode ?? 'click');
+    }
+    case 'display':
+      // Afficheur : seule l'action d'appui (facultative) est exécutée.
+      if (action.press?.type) return runAction(executor, action.press, depth + 1, ctx);
+      return;
     case 'page':
       return; // navigation gérée par le client
     default:
