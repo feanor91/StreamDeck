@@ -272,6 +272,25 @@ function buildSlot(cell) {
   return slot;
 }
 
+// Groupes de la bibliothèque dépliés (repliés par défaut), mémorisés dans le navigateur.
+const openGroups = new Set(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem('deck.library.open') ?? '[]');
+    } catch {
+      return [];
+    }
+  })(),
+);
+function toggleLibraryGroup(name) {
+  if (openGroups.has(name)) openGroups.delete(name);
+  else openGroups.add(name);
+  try {
+    localStorage.setItem('deck.library.open', JSON.stringify([...openGroups]));
+  } catch {}
+  renderLibrary();
+}
+
 function renderLibrary() {
   const q = $('librarySearch').value.trim().toLowerCase();
   const list = $('libraryList');
@@ -288,12 +307,20 @@ function renderLibrary() {
     return;
   }
   list.replaceChildren(
-    ...groups.map((g) =>
-      h(
+    ...groups.map((g) => {
+      // Pendant une recherche, tous les groupes contenant un résultat sont dépliés.
+      const open = !!q || openGroups.has(g.group);
+      return h(
         'div',
-        { class: 'lib-group' },
-        h('h3', {}, g.group),
-        ...g.items.map((it) => {
+        { class: `lib-group${open ? ' open' : ''}` },
+        h(
+          'button',
+          { class: 'lib-head', 'aria-expanded': String(open), disabled: !!q, onclick: () => toggleLibraryGroup(g.group) },
+          h('span', { class: 'chev', html: '<svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>' }),
+          h('span', {}, g.group),
+          h('small', {}, String(g.items.length)),
+        ),
+        ...(!open ? [] : g.items.map((it) => {
           const info = libraryItemInfo(it);
           const el = h(
             'button',
@@ -319,9 +346,9 @@ function renderLibrary() {
             e.dataTransfer.effectAllowed = 'copy';
           });
           return el;
-        }),
-      ),
-    ),
+        })),
+      );
+    }),
   );
 }
 

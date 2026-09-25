@@ -129,20 +129,25 @@ function buildKey(pg, cell) {
     el.classList.add('down');
     el.setPointerCapture?.(e.pointerId);
     longDone = false;
-    // Une bascule s'exécute au relâchement, pour laisser la place à l'appui long
-    // (resynchronisation). Les autres touches réagissent dès l'appui.
-    if (!isToggle) return press(el, pg.id, i, key);
-    timer = setTimeout(() => {
-      longDone = true;
-      resync(el, pg.id, i);
-    }, LONG_PRESS_MS);
+    // Appui long sur une bascule : resynchronisation de l'état, sans rien envoyer.
+    if (isToggle) {
+      timer = setTimeout(() => {
+        longDone = true;
+        resync(el, pg.id, i);
+      }, LONG_PRESS_MS);
+    }
   });
-  el.addEventListener('pointerup', () => {
+  // L'action part au relâchement : un glissement horizontal (changement de page)
+  // ou un doigt relâché hors de la touche ne déclenche rien.
+  el.addEventListener('pointerup', (e) => {
     const wasDown = el.classList.contains('down');
     release();
-    if (isToggle && wasDown && !longDone) press(el, pg.id, i, key);
+    const r = el.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (wasDown && !longDone && inside) press(el, pg.id, i, key);
   });
   el.addEventListener('pointercancel', release);
+  el.cancelGesture = release;
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   return el;
 }
@@ -416,6 +421,60 @@ window.addEventListener('resize', () => {
     grid.style.setProperty('--key-radius', `${view.radius}px`);
   }, 120);
 });
+
+// ---------------------------------------------------------------------------
+// Glisser horizontalement pour changer de page (la grille suit le doigt)
+// ---------------------------------------------------------------------------
+const SWIPE_START = 18; // px avant de considérer le geste comme un glissement
+let swipe = null;
+
+function initSwipe() {
+  const stage = $('stage');
+  const grid = $('deckGrid');
+  const reset = (animate) => {
+    grid.style.transition = animate ? 'transform 0.2s var(--ease), opacity 0.2s var(--ease)' : '';
+    grid.style.transform = '';
+    grid.style.opacity = '';
+  };
+
+  stage.addEventListener('pointerdown', (e) => {
+    // Les boutons rotatifs et curseurs utilisent eux-mêmes le glissement.
+    if (!e.isPrimary || e.target.closest('.dkey.control') || profile().pages.length < 2) return (swipe = null);
+    swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), active: false };
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!swipe || e.pointerId !== swipe.id) return;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    if (!swipe.active) {
+      if (Math.abs(dy) > SWIPE_START && Math.abs(dy) > Math.abs(dx)) return (swipe = null); // geste vertical
+      if (Math.abs(dx) < SWIPE_START || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      swipe.active = true;
+      grid.querySelectorAll('.dkey').forEach((k) => k.cancelGesture?.());
+    }
+    grid.style.transition = '';
+    grid.style.transform = `translateX(${dx}px)`;
+    grid.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / stage.clientWidth));
+  });
+  const end = (e) => {
+    if (!swipe || e.pointerId !== swipe.id) return;
+    const s = swipe;
+    swipe = null;
+    if (!s.active) return;
+    const dx = e.clientX - s.x;
+    const speed = Math.abs(dx) / Math.max(1, performance.now() - s.t);
+    if (e.type === 'pointerup' && (Math.abs(dx) > stage.clientWidth * 0.18 || (speed > 0.5 && Math.abs(dx) > 50))) {
+      reset(false);
+      if (nativeApp) nativeApp.haptic();
+      goToPage(dx < 0 ? '@next' : '@prev', dx < 0 ? 1 : -1);
+    } else {
+      reset(true);
+    }
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+}
+initSwipe();
 
 // Navigation au clavier / à la molette quand le Deck est ouvert sur un ordinateur.
 document.addEventListener('keydown', (e) => {
