@@ -1,6 +1,6 @@
 import { KEY_GROUPS, MODIFIERS, MEDIA_ACTIONS, keyFromEvent, keyLabel } from '/shared/keys.js';
 import { api, clientId, subscribe } from './api.js';
-import { h, icon, toast, promptModal, confirmModal, openMenu } from './dom.js';
+import { h, icon, toast, promptModal, confirmModal, openMenu, openModal } from './dom.js';
 import {
   ACTION_TYPES, STEP_TYPES, DELAY_TYPE, LIBRARY, COLORS, EMOJIS,
   libraryItemInfo, createFromLibrary, keyFace, isMac, isIconPath,
@@ -139,6 +139,16 @@ function scheduleSave() {
   }, 350);
 }
 
+// Enregistre tout de suite une modification en attente (avant une sauvegarde, une restauration…).
+async function flushSave() {
+  if (!dirty) return;
+  clearTimeout(saveTimer);
+  const res = await api.saveConfig(state.config);
+  state.revision = res.revision;
+  dirty = false;
+  setSaveState('saved', 'Enregistré');
+}
+
 // ---------------------------------------------------------------------------
 // Rendu
 // ---------------------------------------------------------------------------
@@ -179,7 +189,8 @@ function renderTabs() {
         'button',
         {
           class: `page-tab${pg.id === page().id ? ' on' : ''}`,
-          title: 'Double-clic pour renommer · clic droit pour plus d’options',
+          draggable: 'true',
+          title: 'Glisser pour changer l’ordre · double-clic pour renommer · clic droit pour plus d’options',
           onclick: () => {
             state.pageId = pg.id;
             state.selected = null;
@@ -194,15 +205,40 @@ function renderTabs() {
         pg.name,
         h('span', { class: 'count' }, count || ''),
       );
-      // Déposer une touche sur un onglet la déplace vers cette page.
+      // Glisser un onglet sur un autre : change l'ordre des pages (avant ou après selon le côté).
+      tab.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-deck-page', String(idx));
+        e.dataTransfer.effectAllowed = 'move';
+        tab.classList.add('dragging');
+      });
+      tab.addEventListener('dragend', () => tab.classList.remove('dragging'));
+      const clearMarks = () => tab.classList.remove('drop-target', 'drop-before', 'drop-after');
+      const after = (e) => {
+        const r = tab.getBoundingClientRect();
+        return e.clientX > r.left + r.width / 2;
+      };
       tab.addEventListener('dragover', (e) => {
-        if (!e.dataTransfer.types.includes('application/x-deck-key') || pg.id === page().id) return;
+        const types = e.dataTransfer.types;
+        if (types.includes('application/x-deck-page')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          tab.classList.toggle('drop-after', after(e));
+          tab.classList.toggle('drop-before', !after(e));
+          return;
+        }
+        // Déposer une touche sur un onglet la déplace vers cette page.
+        if (!types.includes('application/x-deck-key') || pg.id === page().id) return;
         e.preventDefault();
         tab.classList.add('drop-target');
       });
-      tab.addEventListener('dragleave', () => tab.classList.remove('drop-target'));
+      tab.addEventListener('dragleave', clearMarks);
       tab.addEventListener('drop', (e) => {
-        tab.classList.remove('drop-target');
+        clearMarks();
+        const fromPage = e.dataTransfer.getData('application/x-deck-page');
+        if (fromPage !== '') {
+          e.preventDefault();
+          return movePage(Number(fromPage), idx + (after(e) ? 1 : 0));
+        }
         const from = e.dataTransfer.getData('application/x-deck-key');
         if (from === '') return;
         e.preventDefault();
@@ -2084,6 +2120,18 @@ async function renamePage(id) {
   if (name) commit(() => (profile().pages.find((p) => p.id === id).name = name));
 }
 
+// Déplace la page d'indice `from` pour qu'elle se retrouve juste avant l'indice `to` (ordre d'origine).
+function movePage(from, to) {
+  const target = to > from ? to - 1 : to;
+  if (target === from) return;
+  commit(() => {
+    const pages = profile().pages;
+    const [moved] = pages.splice(from, 1);
+    pages.splice(target, 0, moved);
+  });
+  toast('Ordre des pages modifié');
+}
+
 function pageMenu(anchor, id, idx) {
   const pages = profile().pages;
   openMenu(anchor, [
@@ -2101,8 +2149,10 @@ function pageMenu(anchor, id, idx) {
         renderAll();
       },
     },
-    idx > 0 && { label: 'Déplacer à gauche', icon: 'up', run: () => commit(() => { const p = profile().pages; [p[idx - 1], p[idx]] = [p[idx], p[idx - 1]]; }) },
-    idx < pages.length - 1 && { label: 'Déplacer à droite', icon: 'down', run: () => commit(() => { const p = profile().pages; [p[idx + 1], p[idx]] = [p[idx], p[idx + 1]]; }) },
+    idx > 0 && { label: 'Déplacer en premier', icon: 'up', run: () => movePage(idx, 0) },
+    idx > 0 && { label: 'Déplacer à gauche', icon: 'up', run: () => movePage(idx, idx - 1) },
+    idx < pages.length - 1 && { label: 'Déplacer à droite', icon: 'down', run: () => movePage(idx, idx + 2) },
+    idx < pages.length - 1 && { label: 'Déplacer en dernier', icon: 'down', run: () => movePage(idx, pages.length) },
     '-',
     {
       label: 'Supprimer la page',
@@ -2188,17 +2238,140 @@ function profileMenu() {
       },
     },
     '-',
+    { label: 'Sauvegardes…', icon: 'history', run: openBackups },
     { label: 'Exporter la configuration', icon: 'download', run: exportConfig },
     { label: 'Importer une configuration', icon: 'upload', run: () => $('importInput').click() },
   ];
   openMenu($('profileBtn'), items);
 }
 
-function exportConfig() {
-  const blob = new Blob([JSON.stringify(state.config, null, 2)], { type: 'application/json' });
-  const a = h('a', { href: URL.createObjectURL(blob), download: `streamdeck-${new Date().toISOString().slice(0, 10)}.json` });
+function downloadJson(data, name) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: name });
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function exportConfig() {
+  downloadJson(state.config, `streamdeck-${new Date().toISOString().slice(0, 10)}.json`);
+  toast('Configuration exportée dans le dossier Téléchargements', 'ok');
+}
+
+// ---------------------------------------------------------------------------
+// Sauvegardes : liste, création, restauration, téléchargement, suppression
+// ---------------------------------------------------------------------------
+const BACKUP_KINDS = { auto: 'Automatique', manual: 'Manuelle', safety: 'Avant restauration' };
+
+function openBackups() {
+  openModal((modal, close) => {
+    modal.classList.add('backups-modal');
+    const list = h('div', { class: 'backup-list' }, h('div', { class: 'backup-empty' }, 'Chargement…'));
+
+    const refresh = async () => {
+      try {
+        const { backups } = await api.backups();
+        list.replaceChildren(...(backups.length ? backups.map(row) : [h('div', { class: 'backup-empty' }, 'Aucune sauvegarde pour l’instant.')]));
+      } catch (e) {
+        list.replaceChildren(h('div', { class: 'backup-empty' }, e.message));
+      }
+    };
+
+    const row = (b) => {
+      const date = new Date(b.createdAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+      const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
+      return h(
+        'div',
+        { class: 'backup-row' },
+        h('div', { class: 'backup-info' },
+          h('strong', {}, b.label || date),
+          h('small', {},
+            h('span', { class: `backup-kind ${b.kind}` }, BACKUP_KINDS[b.kind] ?? b.kind),
+            b.label ? ` ${date} · ` : ' ',
+            `${plural(b.profiles, 'profil')} · ${plural(b.pages, 'page')} · ${plural(b.keys, 'touche')}`,
+            b.version ? ` · v${b.version}` : '')),
+        h('div', { class: 'backup-actions' },
+          h('button', { class: 'btn small primary', onclick: () => restore(b, date) }, 'Restaurer'),
+          h('button', { class: 'btn ghost icon-only', title: 'Télécharger (fichier .json)', onclick: () => download(b) }, icon('download')),
+          h('button', { class: 'btn ghost icon-only', title: 'Supprimer', onclick: () => remove(b, date) }, icon('trash'))),
+      );
+    };
+
+    const create = async () => {
+      const label = await promptModal({ title: 'Nouvelle sauvegarde', message: 'Donnez-lui un nom pour la retrouver facilement.', value: `Sauvegarde du ${new Date().toLocaleDateString('fr-FR')}`, confirmLabel: 'Sauvegarder' });
+      if (!label) return;
+      try {
+        await flushSave();
+        await api.createBackup({ label });
+        toast('Sauvegarde créée', 'ok');
+        refresh();
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    };
+
+    const restore = async (b, date) => {
+      const ok = await confirmModal({
+        title: `Restaurer « ${b.label || date} » ?`,
+        message: 'La configuration actuelle sera remplacée. Elle est d’abord sauvegardée automatiquement (« Avant restauration ») : vous pourrez y revenir.',
+        confirmLabel: 'Restaurer',
+      });
+      if (!ok) return;
+      try {
+        await flushSave();
+        // Capturé avant l'appel : l'événement temps réel peut arriver avant la réponse.
+        const before = JSON.stringify(state.config);
+        state.restoring = true; // la réponse est appliquée ci-dessous, pas l'événement temps réel
+        const res = await api.restoreBackup(b.id).finally(() => (state.restoring = false));
+        history.past.push(before); // Ctrl+Z annule aussi la restauration
+        history.future = [];
+        state.revision = res.revision;
+        state.config = res.config;
+        state.profileId = state.config.activeProfileId;
+        state.pageId = null;
+        state.selected = null;
+        ensureSelection();
+        renderAll();
+        updateUndoButtons();
+        toast('Configuration restaurée', 'ok');
+        close(true);
+      } catch (e) {
+        toast(e.message, 'err', 5000);
+      }
+    };
+
+    const download = async (b) => {
+      try {
+        const data = await api.readBackup(b.id);
+        downloadJson(data.config, `streamdeck-${b.id}.json`);
+        toast('Sauvegarde téléchargée dans le dossier Téléchargements', 'ok');
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    };
+
+    const remove = async (b, date) => {
+      const ok = await confirmModal({ title: `Supprimer « ${b.label || date} » ?`, message: 'Cette sauvegarde sera définitivement effacée.', confirmLabel: 'Supprimer', danger: true });
+      if (!ok) return;
+      try {
+        await api.deleteBackup(b.id);
+        refresh();
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    };
+
+    modal.append(
+      h('h3', {}, 'Sauvegardes de la configuration'),
+      h('p', {}, 'Une sauvegarde automatique est faite au démarrage et au plus une fois par heure pendant vos modifications (les 30 dernières sont gardées). Les sauvegardes manuelles sont conservées jusqu’à leur suppression.'),
+      h('div', { class: 'backup-tools' },
+        h('button', { class: 'btn primary', onclick: create }, icon('save'), 'Créer une sauvegarde'),
+        h('button', { class: 'btn', onclick: exportConfig }, icon('download'), 'Exporter vers un fichier'),
+        h('button', { class: 'btn', onclick: () => { close(null); $('importInput').click(); } }, icon('upload'), 'Importer un fichier')),
+      list,
+      h('div', { class: 'modal-actions' }, h('button', { class: 'btn ghost', onclick: () => close(null) }, 'Fermer')),
+    );
+    refresh();
+  });
 }
 
 async function importConfig(file) {
@@ -2208,10 +2381,13 @@ async function importConfig(file) {
     if (!Array.isArray(cfg.profiles)) throw new Error('Ce fichier ne contient pas de configuration StreamDeck.');
     const ok = await confirmModal({
       title: 'Importer cette configuration ?',
-      message: `${cfg.profiles.length} profil(s). La configuration actuelle sera remplacée (Ctrl+Z pour annuler).`,
+      message: `${cfg.profiles.length} profil(s). La configuration actuelle sera remplacée ; elle est d’abord sauvegardée (« Avant import » dans Sauvegardes) et Ctrl+Z annule l’import.`,
       confirmLabel: 'Importer',
     });
     if (!ok) return;
+    // Filet de sécurité : la configuration remplacée reste disponible dans « Sauvegardes ».
+    await flushSave().catch(() => {});
+    await api.createBackup({ kind: 'safety', label: 'Avant import' }).catch(() => {});
     commit((c) => {
       for (const k of Object.keys(c)) delete c[k];
       Object.assign(c, cfg);
@@ -2290,6 +2466,7 @@ function bindGlobal() {
   $('profileBtn').addEventListener('click', profileMenu);
   $('msfsPill').addEventListener('click', () => openExplorer());
   $('updatePill').addEventListener('click', onUpdatePill);
+  $('backupsBtn').addEventListener('click', openBackups);
   $('appVersion').addEventListener('click', checkUpdateNow);
   $('librarySearch').addEventListener('input', renderLibrary);
   $('layoutSelect').addEventListener('change', (e) => {
@@ -2346,6 +2523,7 @@ function connectEvents() {
       }
     },
     config: ({ revision, origin, config }) => {
+      if (revision === state.revision || state.restoring) return; // restauration : appliquée par sa réponse
       state.revision = revision;
       if (origin === clientId || dirty) return;
       state.config = config;

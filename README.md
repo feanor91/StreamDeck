@@ -119,10 +119,26 @@ versions publiées. La mise à jour automatique d'Android fonctionne à partir d
 - **Inspecteur** (à droite) : type d'action, paramètres, **logiciel cible**,
   titre, icône (emoji ou image) et couleur.
 - **Pages** : onglets au-dessus de la grille (double-clic pour renommer, clic
-  droit pour les autres options). Une touche « Page » permet de naviguer entre
-  elles sur le Deck, comme les dossiers d'un Stream Deck.
+  droit pour les autres options). **Glissez un onglet** sur un autre pour changer
+  l'ordre des pages (un repère indique où il sera inséré) ; le clic droit propose
+  aussi « Déplacer à gauche / à droite / en premier / en dernier ». L'ordre est
+  celui du Deck. Une touche « Page » permet de naviguer entre les pages, comme
+  les dossiers d'un Stream Deck.
 - **Profils** : menu en haut. Le profil sélectionné est celui qu'affiche le Deck.
-  Export et import de la configuration au format JSON.
+- **Sauvegardes** : bouton ↺ en haut à droite (ou menu du profil).
+  - *Automatiques* : au démarrage et au plus une fois par heure pendant vos
+    modifications ; les 30 plus récentes sont gardées.
+  - *Manuelles* : « Créer une sauvegarde », avec un nom ; conservées jusqu'à leur
+    suppression.
+  - *Restaurer* remplace la configuration par celle de la sauvegarde. La
+    configuration remplacée est d'abord sauvegardée (« Avant restauration ») et
+    Ctrl+Z annule la restauration.
+  - Chaque sauvegarde peut être téléchargée (fichier `.json`) ou supprimée.
+    « Exporter vers un fichier » et « Importer un fichier » permettent de
+    transférer la configuration vers un autre PC (un import est lui aussi
+    précédé d'une sauvegarde « Avant import »).
+  - Les sauvegardes sont stockées dans le dossier `backups` des données
+    (`%APPDATA%\StreamDeck\data\backups` sous Windows).
 - **Dispositions** : Mini (2×3), Standard (3×5), Plus (4×4) et XL (4×8).
 - L'enregistrement est automatique. `Ctrl+Z` / `Ctrl+Y` pour annuler/rétablir.
 
@@ -397,6 +413,7 @@ server/
   msfs.js             Liaison Microsoft Flight Simulator (SimConnect)
   simhub.js           Liaison SimHub (plugin Property Server, TCP 18082)
   update.js           Recherche des nouvelles versions publiées sur GitHub
+  backups.js          Sauvegardes de la configuration (automatiques et manuelles)
   states.js           États des touches à bascule
   store.js            Configuration (validation, écriture atomique)
   actions.js          Exécution des actions
