@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, findKey, LAYOUTS } from './store.js';
+import { Store, findKey, LAYOUTS, validateConfig } from './store.js';
+import { createBackups } from './backups.js';
 import { createExecutor } from './executors/index.js';
 import { runAction, toggleAction } from './actions.js';
 import { ToggleStates } from './states.js';
@@ -141,6 +142,7 @@ export async function startDeckServer({
   log = console,
 } = {}) {
   const store = new Store(dataDir);
+  const backups = createBackups(dataDir, { version: VERSION });
   const toggles = new ToggleStates(dataDir);
   const executor = createExecutor({ dryRun, log: (m) => log.log(m) });
   let executorStatus = { ok: false, reason: 'Vérification en cours…' };
@@ -347,7 +349,51 @@ export async function startDeckServer({
         revision++;
         broadcast('config', { revision, origin: body.clientId ?? null, config: store.config });
         refreshSimWatch();
+        backups.autoSave(store.config).catch((e) => log.warn(`Sauvegarde automatique impossible : ${e.message}`));
         return send(res, 200, { revision });
+      }
+
+      // --- Sauvegardes de la configuration ---
+      case 'GET /api/backups':
+        requireAdmin(req);
+        return send(res, 200, { backups: await backups.list() });
+
+      case 'POST /api/backups': {
+        requireAdmin(req);
+        const body = await readJson(req);
+        const kind = body.kind === 'safety' ? 'safety' : 'manual';
+        return send(res, 200, { backup: await backups.create(store.config, { kind, label: body.label ?? '' }) });
+      }
+
+      case 'POST /api/backups/read': {
+        requireAdmin(req);
+        const { id } = await readJson(req);
+        return send(res, 200, await backups.read(id));
+      }
+
+      case 'POST /api/backups/delete': {
+        requireAdmin(req);
+        const { id } = await readJson(req);
+        await backups.remove(id);
+        return send(res, 200, { ok: true });
+      }
+
+      // Restauration : la configuration actuelle est d'abord sauvegardée (retour possible).
+      case 'POST /api/backups/restore': {
+        requireAdmin(req);
+        const { id } = await readJson(req);
+        const data = await backups.read(id);
+        try {
+          validateConfig(structuredClone(data.config));
+        } catch (e) {
+          throw Object.assign(e, { status: 422 });
+        }
+        await backups.create(store.config, { kind: 'safety', label: 'Avant restauration' });
+        await store.save(data.config);
+        revision++;
+        broadcast('config', { revision, origin: null, config: store.config });
+        refreshSimWatch();
+        return send(res, 200, { revision, config: store.config });
       }
 
       case 'GET /api/status':
@@ -526,6 +572,14 @@ export async function startDeckServer({
   await store.load();
   await toggles.load();
   refreshSimWatch();
+  // Sauvegarde au démarrage, sauf si la plus récente contient déjà cette configuration.
+  try {
+    const [latest] = await backups.list();
+    const same = latest && JSON.stringify((await backups.read(latest.id)).config) === JSON.stringify(store.config);
+    if (!same) await backups.autoSave(store.config, { force: true });
+  } catch (e) {
+    log.warn(`Sauvegarde automatique impossible : ${e.message}`);
+  }
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {

@@ -41,6 +41,8 @@ const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+  save: '<path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h9V3M7 21v-7h10v7"/>',
 };
 
 export function icon(name, cls = 'i') {
@@ -60,7 +62,7 @@ export function toast(message, type = 'info', timeout = 3200) {
   }, timeout);
 }
 
-function openModal(build) {
+export function openModal(build) {
   return new Promise((resolve) => {
     const prev = document.activeElement;
     const close = (value) => {
@@ -92,7 +94,12 @@ export function promptModal({ title, message, value = '', placeholder = '', conf
       if (v) close(v);
       else input.focus();
     };
-    input.addEventListener('keydown', (e) => e.key === 'Enter' && submit());
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      // Sinon, la touche Entrée « clique » aussi sur le bouton qui reprend le focus à la fermeture.
+      e.preventDefault();
+      submit();
+    });
     modal.append(
       h('h3', {}, title),
       message ? h('p', {}, message) : null,
