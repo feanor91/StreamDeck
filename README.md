@@ -86,18 +86,22 @@ La version installée est affichée partout : à côté du nom **StreamDeck** da
 l'interface de configuration, en haut du menu de l'icône de la zone de
 notification, et en bas de l'écran de connexion Android.
 
-Les applications vérifient d'elles-mêmes (au démarrage puis toutes les 6 heures)
-les versions publiées sur GitHub :
+À chaque lancement, les applications vérifient les versions publiées sur GitHub.
+Si une version plus récente existe, **une fenêtre de mise à jour s'affiche
+d'elle-même** :
 
-- **PC (Windows, AppImage)** : la nouvelle version se télécharge en arrière-plan.
-  Une notification et une pastille « Installer la vX » apparaissent ; un clic
-  redémarre StreamDeck sur la nouvelle version (sinon elle s'installe à la
-  fermeture). Menu de l'icône → « Rechercher une mise à jour », ou clic sur le
-  numéro de version dans l'interface, pour vérifier tout de suite.
-- **Android** : une fenêtre propose d'installer la nouvelle version ; l'APK est
-  téléchargé puis l'installeur d'Android s'ouvre (confirmez « Installer »). Sur
-  Android 8 et plus, autorisez StreamDeck à installer des applications la
-  première fois. « Rechercher une mise à jour » en bas de l'écran de connexion.
+- **PC (Windows, AppImage)** : « Mettre à jour maintenant » télécharge la nouvelle
+  version en arrière-plan (progression dans la barre des tâches et dans
+  l'interface), puis StreamDeck redémarre dessus. « Plus tard » : la pastille
+  « Installer la vX » de l'interface et le menu de l'icône permettent de lancer
+  la mise à jour quand vous voulez. La vérification est refaite toutes les
+  6 heures si StreamDeck reste ouvert. Menu de l'icône → « Rechercher une mise à
+  jour », ou clic sur le numéro de version, pour vérifier tout de suite.
+- **Android** : « Installer » télécharge l'APK puis ouvre l'installeur d'Android
+  (confirmez « Installer »). Sur Android 8 et plus, autorisez StreamDeck à
+  installer des applications la première fois. La vérification est refaite quand
+  l'application revient au premier plan après 30 minutes.
+  « Rechercher une mise à jour » en bas de l'écran de connexion.
 
 Le dépôt GitHub doit être **public** pour que les applications puissent lire les
 versions publiées. La mise à jour automatique d'Android fonctionne à partir de la

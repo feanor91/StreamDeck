@@ -144,12 +144,19 @@ function showDeckPreview() {
 }
 
 // --- Mises à jour ----------------------------------------------------------------------------
-// Version installée (Windows, AppImage) : electron-updater lit les versions publiées sur GitHub,
-// télécharge la nouvelle en arrière-plan puis l'installe au redémarrage (ou à la fermeture).
-// En développement, ou si le format ne se met pas à jour tout seul : simple signalement.
+// Au lancement (puis toutes les 6 heures), StreamDeck lit les versions publiées sur GitHub.
+// Si une version plus récente existe, une fenêtre propose de l'installer : le téléchargement
+// se fait alors en arrière-plan, puis StreamDeck redémarre sur la nouvelle version.
+// Version installée (Windows, AppImage) : electron-updater télécharge et installe.
+// En développement, ou si le format ne se met pas à jour tout seul : lien de téléchargement.
 function createUpdater() {
   const canSelfUpdate = app.isPackaged && (process.platform === 'win32' || (process.platform === 'linux' && !!process.env.APPIMAGE));
-  if (!canSelfUpdate) return createReleaseChecker({ current: app.getVersion() });
+  if (!canSelfUpdate) {
+    const checker = createReleaseChecker({ current: app.getVersion(), auto: false });
+    setTimeout(checker.check, 3_000);
+    setInterval(checker.check, 6 * 3600_000).unref();
+    return checker;
+  }
 
   const listeners = new Set();
   let state = { current: app.getVersion(), state: 'idle', latest: null, url: RELEASES_URL, notes: '', error: null, canInstall: false, progress: null };
@@ -160,34 +167,54 @@ function createUpdater() {
   const releaseUrl = (v) => `${RELEASES_URL}/tag/v${v}`;
 
   autoUpdater.logger = null;
-  autoUpdater.autoDownload = true;
+  autoUpdater.autoDownload = false; // on demande d'abord l'accord de l'utilisateur
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => set({ state: 'checking', error: null }));
-  autoUpdater.on('update-not-available', () => set({ state: 'current' }));
-  autoUpdater.on('update-available', (info) => set({ state: 'downloading', latest: info.version, url: releaseUrl(info.version), progress: 0 }));
-  autoUpdater.on('download-progress', (p) => set({ progress: Math.round(p.percent) }));
-  autoUpdater.on('update-downloaded', (info) => set({ state: 'ready', latest: info.version, url: releaseUrl(info.version), canInstall: true, progress: 100 }));
+  autoUpdater.on('update-not-available', () => set({ state: 'current', canInstall: false }));
+  autoUpdater.on('update-available', (info) =>
+    set({ state: 'available', latest: info.version, url: releaseUrl(info.version), canInstall: true, progress: null }),
+  );
+  autoUpdater.on('download-progress', (p) => {
+    set({ state: 'downloading', progress: Math.round(p.percent) });
+    mainWindow?.setProgressBar(p.percent / 100);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.setProgressBar(-1);
+    set({ state: 'ready', latest: info.version, url: releaseUrl(info.version), canInstall: true, progress: 100 });
+    // L'utilisateur a déjà accepté la mise à jour : on redémarre dessus.
+    quitAndInstall();
+  });
   autoUpdater.on('error', (e) => {
-    // Une erreur pendant le téléchargement ne doit pas masquer une mise à jour déjà prête.
-    if (state.state !== 'ready') set({ state: 'error', error: `Mise à jour impossible : ${String(e?.message ?? e).split('\n')[0]}` });
+    mainWindow?.setProgressBar(-1);
+    if (state.state === 'ready') return; // une erreur tardive ne doit pas masquer une mise à jour prête
+    const failedDownload = state.state === 'downloading';
+    set({ state: 'error', canInstall: false, error: `Mise à jour impossible : ${String(e?.message ?? e).split('\n')[0]}` });
+    if (failedDownload) dialog.showMessageBox({ type: 'warning', title: 'StreamDeck', message: state.error, detail: `Vous pouvez télécharger la mise à jour depuis ${RELEASES_URL}.` });
   });
 
+  const quitAndInstall = () => {
+    quitting = true;
+    // Laisse le temps à une éventuelle réponse HTTP de partir avant de quitter.
+    setTimeout(() => autoUpdater.quitAndInstall(true, true), 300);
+  };
+
   const check = async () => {
-    if (state.state === 'ready' || state.state === 'downloading') return state;
+    if (['downloading', 'ready'].includes(state.state)) return state;
     await autoUpdater.checkForUpdates().catch(() => {}); // l'erreur arrive aussi par l'événement « error »
     return state;
   };
-  setTimeout(check, 10_000);
+  setTimeout(check, 3_000);
   setInterval(check, 6 * 3600_000).unref();
 
   return {
     status: () => state,
     check,
     install() {
-      if (state.state !== 'ready') throw Object.assign(new Error('Aucune mise à jour prête à installer.'), { status: 400 });
-      quitting = true;
-      // Laisse le temps à la réponse HTTP de partir avant de quitter.
-      setTimeout(() => autoUpdater.quitAndInstall(true, true), 300);
+      if (state.state === 'ready') return quitAndInstall();
+      if (state.state === 'downloading') return;
+      if (state.state !== 'available') throw Object.assign(new Error('Aucune mise à jour à installer.'), { status: 400 });
+      set({ state: 'downloading', progress: 0 });
+      autoUpdater.downloadUpdate().catch(() => {}); // l'erreur arrive par l'événement « error »
     },
     onChange(fn) {
       listeners.add(fn);
@@ -197,35 +224,50 @@ function createUpdater() {
 }
 
 let lastUpdateState = null;
+let promptedVersion = null; // version déjà proposée pendant cette session
+let promptOpen = false;
+
 function onUpdateChange(u) {
   if (u.state === lastUpdateState && u.state !== 'downloading') return;
-  const was = lastUpdateState;
   lastUpdateState = u.state;
   if (tray) refreshTrayMenu();
-  if (u.state === 'ready' && was !== 'ready' && Notification.isSupported()) {
-    const n = new Notification({
-      title: `StreamDeck ${u.latest} est prête`,
-      body: 'La mise à jour sera installée à la fermeture de StreamDeck. Cliquez pour redémarrer maintenant.',
-      icon: ICON,
-    });
-    n.on('click', () => updater.install());
-    n.show();
+  if (u.state === 'available' && promptedVersion !== u.latest) promptUpdate(u);
+}
+
+// Fenêtre « Nouvelle version disponible », affichée d'elle-même dès qu'une mise à jour est trouvée.
+async function promptUpdate(u) {
+  if (promptOpen) return;
+  promptOpen = true;
+  promptedVersion = u.latest;
+  try {
+    const parent = mainWindow?.isVisible() ? mainWindow : undefined;
+    const options = {
+      type: 'info',
+      title: 'Mise à jour de StreamDeck',
+      message: `StreamDeck ${u.latest} est disponible.`,
+      detail: u.canInstall
+        ? `Version installée : ${u.current}.\n\nLa nouvelle version se télécharge en arrière-plan, puis StreamDeck redémarre automatiquement. Vos touches et réglages sont conservés.`
+        : `Version installée : ${u.current}.\n\nOuvrir la page de téléchargement ?`,
+      buttons: [u.canInstall ? 'Mettre à jour maintenant' : 'Télécharger', 'Plus tard'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    };
+    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    if (response !== 0) return;
+    if (u.canInstall) updater.install();
+    else shell.openExternal(u.url);
+  } finally {
+    promptOpen = false;
   }
 }
 
 async function checkUpdatesNow() {
+  promptedVersion = null; // recherche demandée : on repropose la version même si elle a été refusée
   const u = await updater.check();
   if (u.state === 'current') dialog.showMessageBox({ type: 'info', title: 'StreamDeck', message: `StreamDeck est à jour (version ${u.current}).` });
   else if (u.state === 'error') dialog.showMessageBox({ type: 'warning', title: 'StreamDeck', message: u.error });
-  else if (u.state === 'available') {
-    const { response } = await dialog.showMessageBox({
-      type: 'info',
-      title: 'StreamDeck',
-      message: `La version ${u.latest} est disponible (installée : ${u.current}).`,
-      buttons: ['Télécharger', 'Plus tard'],
-    });
-    if (response === 0) shell.openExternal(u.url);
-  }
+  else if (u.state === 'available' && promptedVersion !== u.latest) promptUpdate(u);
 }
 
 function updateMenuItem() {
@@ -233,11 +275,11 @@ function updateMenuItem() {
   if (!u) return [];
   switch (u.state) {
     case 'ready':
-      return [{ label: `Redémarrer et installer la version ${u.latest}`, click: () => updater.install() }];
+      return [{ label: `Redémarrer sur la version ${u.latest}`, click: () => updater.install() }];
     case 'downloading':
       return [{ label: `Téléchargement de la version ${u.latest}… ${u.progress ?? 0} %`, enabled: false }];
     case 'available':
-      return [{ label: `Télécharger la version ${u.latest}`, click: () => shell.openExternal(u.url) }];
+      return [{ label: `Installer la version ${u.latest}`, click: () => (u.canInstall ? updater.install() : shell.openExternal(u.url)) }];
     case 'checking':
       return [{ label: 'Recherche de mise à jour…', enabled: false }];
     default:
