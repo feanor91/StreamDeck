@@ -48,6 +48,8 @@ class MainActivity : Activity() {
     @Volatile private var attempt = 0
     private var download: Future<*>? = null
     private var installAfterPermission = false
+    private var updateDialog: AlertDialog? = null
+    private var lastUpdateCheck = 0L
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +81,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Retour au premier plan après un long moment : nouvelle recherche de mise à jour.
+        if (lastUpdateCheck != 0L && System.currentTimeMillis() - lastUpdateCheck > RECHECK_AFTER) checkForUpdate(manual = false)
         // Retour des réglages « Installer des applis inconnues » : on reprend l'installation.
         if (installAfterPermission && Updater.canInstall(this)) {
             installAfterPermission = false
@@ -138,8 +142,10 @@ class MainActivity : Activity() {
 
     // --- Mises à jour (versions publiées sur GitHub) --------------------------------------
 
+    /** Recherche à chaque lancement : la fenêtre de mise à jour s'affiche d'elle-même. */
     private fun checkForUpdate(manual: Boolean) {
-        if (!manual && System.currentTimeMillis() - prefs.getLong("update_checked", 0) < UPDATE_EVERY) return
+        if (updateDialog?.isShowing == true || download?.isDone == false) return
+        lastUpdateCheck = System.currentTimeMillis()
         if (manual) toast("Recherche de mise à jour…")
         io.execute {
             val result = runCatching { Updater.latest() }
@@ -147,7 +153,6 @@ class MainActivity : Activity() {
                 if (isFinishing) return@post
                 val current = BuildConfigCompat.versionName(this)
                 result.onSuccess { r ->
-                    prefs.edit().putLong("update_checked", System.currentTimeMillis()).apply()
                     when {
                         Updater.compare(r.version, current) <= 0 -> if (manual) toast("StreamDeck est à jour (version $current).")
                         !manual && prefs.getString("update_skipped", null) == r.version -> Unit
@@ -162,7 +167,8 @@ class MainActivity : Activity() {
 
     private fun offerUpdate(r: Release, current: String) {
         if (r.apkUrl.isBlank()) return offerDownloadPage("La version ${r.version} est disponible, mais sans application Android.")
-        dialog()
+        if (updateDialog?.isShowing == true) return
+        updateDialog = dialog()
             .setTitle("Mise à jour disponible")
             .setMessage("StreamDeck ${r.version} est disponible (version installée : $current).\n\nL'installation ne modifie pas vos réglages.")
             .setPositiveButton("Installer") { _, _ -> startDownload(r) }
@@ -407,8 +413,8 @@ class MainActivity : Activity() {
 /** Version minimale du moteur Chromium de la WebView (requêtes de conteneur et color-mix CSS). */
 private const val MIN_WEBVIEW = 111
 
-/** Recherche automatique de mise à jour au plus une fois toutes les 6 heures. */
-private const val UPDATE_EVERY = 6 * 3600_000L
+/** Retour au premier plan après ce délai : nouvelle recherche de mise à jour. */
+private const val RECHECK_AFTER = 30 * 60_000L
 
 private object BuildConfigCompat {
     fun versionName(activity: Activity): String = runCatching {

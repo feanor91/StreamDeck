@@ -387,6 +387,9 @@ function renderUpdate() {
   } else if (u.state === 'downloading') {
     label.textContent = `Téléchargement v${u.latest}… ${u.progress ?? 0} %`;
     pill.title = 'La mise à jour sera proposée à la fin du téléchargement.';
+  } else if (u.canInstall) {
+    label.textContent = `Installer la v${u.latest}`;
+    pill.title = 'Télécharger et installer la mise à jour, puis redémarrer StreamDeck';
   } else {
     label.textContent = `v${u.latest} disponible`;
     pill.title = 'Ouvrir la page de téléchargement';
@@ -396,16 +399,16 @@ function renderUpdate() {
 async function onUpdatePill() {
   const u = state.update;
   if (!u) return;
-  if (u.state === 'ready' && u.canInstall) {
+  if ((u.state === 'ready' || u.state === 'available') && u.canInstall) {
     const ok = await confirmModal({
       title: `Installer StreamDeck ${u.latest} ?`,
-      message: 'StreamDeck va se fermer, installer la mise à jour puis redémarrer. Le Deck sera indisponible quelques secondes.',
+      message: 'La mise à jour se télécharge, puis StreamDeck se ferme, l’installe et redémarre. Le Deck sera indisponible quelques secondes.',
       confirmLabel: 'Installer et redémarrer',
     });
     if (!ok) return;
     try {
       await api.installUpdate();
-      toast('Installation de la mise à jour…');
+      toast('Téléchargement de la mise à jour…');
     } catch (e) {
       toast(e.message, 'err');
     }
