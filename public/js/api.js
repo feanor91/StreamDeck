@@ -1,10 +1,13 @@
 export const clientId = Math.random().toString(36).slice(2, 10);
 
 async function request(method, url, body) {
+  // Le serveur exige du JSON pour toute requête qui modifie quelque chose (protection
+  // contre les requêtes envoyées par d'autres sites) : corps vide « {} » si besoin.
+  const write = method !== 'GET';
   const res = await fetch(url, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
+    headers: write ? { 'Content-Type': 'application/json' } : {},
+    body: write ? JSON.stringify(body ?? {}) : undefined,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
