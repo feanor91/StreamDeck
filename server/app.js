@@ -584,6 +584,7 @@ export async function startDeckServer({
     server.once('error', reject);
     server.listen(port, host, () => {
       server.off('error', reject);
+      port = server.address().port; // port 0 : port libre attribué par le système (tests)
       resolve();
     });
   });

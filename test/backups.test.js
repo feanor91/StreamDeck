@@ -40,9 +40,8 @@ test('sauvegardes : création, liste, lecture, rotation des automatiques', async
 
 test('serveur : sauvegarde manuelle, restauration avec sauvegarde de sécurité', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-bk-srv-'));
-  const port = 6700 + Math.floor(Math.random() * 300);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhub: false, updateCheck: false, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhub: false, updateCheck: false, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   const json = { 'Content-Type': 'application/json' };
   const post = (p, data = {}) => fetch(url + p, { method: 'POST', headers: json, body: JSON.stringify(data) }).then((r) => r.json());
   const list = async () => (await fetch(`${url}/api/backups`).then((r) => r.json())).backups;

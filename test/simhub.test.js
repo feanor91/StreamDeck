@@ -42,9 +42,8 @@ test('SimHub : préréglages cohérents', () => {
 test('serveur : afficheurs, bascule synchronisée et commandes SimHub', async () => {
   const sim = await fakeSimhub({ properties: { 'dcp.gd.Gear': ['string', 'N'], 'dcp.gd.PitLimiterOn': ['integer', '0'] } });
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-simhub-'));
-  const port = 5500 + Math.floor(Math.random() * 300);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhubPort: sim.port, updateCheck: false, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhubPort: sim.port, updateCheck: false, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   const get = () => fetch(`${url}/api/config`).then((r) => r.json());
   const post = (p, data) =>
     fetch(url + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then((r) => r.json());
@@ -92,9 +91,8 @@ test('serveur : afficheurs, bascule synchronisée et commandes SimHub', async ()
 
 test('SimHub absent : statut explicite et commande refusée', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-simhub-off-'));
-  const port = 5900 + Math.floor(Math.random() * 300);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhubPort: 1, updateCheck: false, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhubPort: 1, updateCheck: false, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   try {
     assert.ok(await until(async () => /non détecté/.test((await fetch(`${url}/api/status`).then((r) => r.json())).simhub.reason ?? '')));
     const res = await fetch(`${url}/api/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: { type: 'simhub', input: 'x' } }) });

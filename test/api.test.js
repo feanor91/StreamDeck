@@ -9,14 +9,13 @@ const quiet = { log() {}, warn() {}, error() {} };
 
 test('interface : les requêtes sans paramètre (mise à jour) sont acceptées par le serveur', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-api-'));
-  const port = 6300 + Math.floor(Math.random() * 300);
   let installs = 0;
   const status = { current: '1.0.0', state: 'available', latest: '2.0.0', canInstall: true };
   const updater = { status: () => status, check: async () => status, install: () => installs++, onChange: () => () => {} };
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhub: false, updater, log: quiet });
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, simhub: false, updater, log: quiet });
   // Le client de l'interface utilise des adresses relatives : on les résout vers le serveur de test.
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (url, opts) => realFetch(new URL(url, `http://127.0.0.1:${port}`), opts);
+  globalThis.fetch = (url, opts) => realFetch(new URL(url, `http://127.0.0.1:${deck.port}`), opts);
   try {
     const { api } = await import('../public/js/api.js');
     assert.equal((await api.checkUpdate()).latest, '2.0.0');

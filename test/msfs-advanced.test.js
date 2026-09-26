@@ -80,9 +80,8 @@ test('catalogue A320 FlyByWire cohérent', () => {
 test('serveur : FCU A320 (voyants, afficheur, enfoncer / tirer) et bascule sur Input Event', async () => {
   const sim = fakeSimConnect({ inputs: [{ name: 'RAFALE_GEAR_LEVER', value: 0 }] });
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-fbw-'));
-  const port = 4700 + Math.floor(Math.random() * 300);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   const get = () => fetch(`${url}/api/config`).then((r) => r.json());
   const post = (p, data) =>
     fetch(url + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then((r) => r.json());
