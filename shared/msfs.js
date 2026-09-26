@@ -401,3 +401,44 @@ for (const p of FBW_PRESETS) {
     p.alt = { ...p.alt, title: p.face.title };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Rafale (AzurPoly, MSFS 2024). Commandes exposées en Input Events par l'avion :
+// essentiellement le sol (train, frein de parc, aérofreins, échelle, GPU, cales,
+// caches). Les systèmes du cockpit passent par des variables L: propres à AzurPoly.
+// Chaque touche lit l'état réel dans le simulateur (bascule synchronisée).
+// ---------------------------------------------------------------------------
+const RAF = '#1c2433';
+const ON_RED = '#b91c1c';
+const ON_AMBER = '#b45309';
+const aviaIcon = (name) => `/public/icons/avia/${name}.svg`;
+const rafToggle = (label, input, title, onTitle, iconName, { onIcon, onColor = ON_GREEN } = {}) => ({
+  label,
+  desc: 'Rafale · état synchronisé',
+  action: { type: 'toggle', same: true, sync: { input }, actions: [{ type: 'msfs', kind: 'input', input, op: 'toggle' }] },
+  face: { title, icon: aviaIcon(iconName), color: RAF },
+  alt: { title: onTitle, icon: aviaIcon(onIcon ?? iconName), color: onColor },
+});
+
+export const RAFALE_COVERS = [
+  'UNKNOWN_CD_AOA_COVERS', 'UNKNOWN_CD_ENGINE_COVER_L', 'UNKNOWN_CD_ENGINE_COVER_R', 'UNKNOWN_CD_FRONT_ANTENNA_COVER',
+  'UNKNOWN_CD_OSF_COVER', 'UNKNOWN_CD_PITOT_COVER', 'UNKNOWN_CD_REAR_COVERS', 'UNKNOWN_CD_SPECTRA_COVERS',
+];
+const setAll = (inputs, value) => ({ type: 'multi', steps: inputs.map((input) => ({ type: 'msfs', kind: 'input', input, op: 'set', value })) });
+
+export const RAFALE_PRESETS = [
+  rafToggle('Train d’atterrissage', 'LANDING_GEAR_GEAR', 'Train rentré', 'Train sorti', 'gear-up', { onIcon: 'gear-down' }),
+  rafToggle('Frein de parc', 'LANDING_GEAR_PARKINGBRAKE', 'Frein parc', 'FREIN PARC', 'parking-brake', { onColor: ON_RED }),
+  rafToggle('Aérofreins', 'AZP_RAF_HANDLING_SPOILERS', 'Aérofreins', 'AÉROFREINS', 'spoilers', { onColor: ON_AMBER }),
+  rafToggle('Échelle pilote', 'LADDER_PILOT_LADDER', 'Échelle', 'ÉCHELLE', 'door', { onColor: ON_AMBER }),
+  rafToggle('Groupe de parc (GPU)', 'CD_GPU_CD_GPU', 'GPU', 'GPU', 'battery'),
+  rafToggle('Prise GPU', 'GPU_PLUG_GPU_PLUG', 'Prise GPU', 'GPU BRANCHÉ', 'battery'),
+  rafToggle('Cales', 'UNKNOWN_CHOCKS', 'Cales', 'CALES', 'pushback', { onColor: ON_AMBER }),
+  {
+    label: 'Caches et protections (tous)',
+    desc: 'Rafale · état synchronisé',
+    action: { type: 'toggle', same: false, sync: { input: 'UNKNOWN_CD_PITOT_COVER' }, actions: [setAll(RAFALE_COVERS, 1), setAll(RAFALE_COVERS, 0)] },
+    face: { title: 'Caches', icon: aviaIcon('pitot-heat'), color: RAF },
+    alt: { title: 'CACHES POSÉS', icon: aviaIcon('pitot-heat'), color: ON_AMBER },
+  },
+];

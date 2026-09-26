@@ -1285,7 +1285,20 @@ function openExplorer(onPick = null) {
   };
   const onKey = (e) => e.key === 'Escape' && (e.stopPropagation(), close());
 
+  // Export de la liste (pour préparer des préréglages) : actif dès que la liste est chargée.
+  const exportBtn = h('button', {
+    class: 'btn',
+    title: 'Enregistrer la liste des commandes dans un fichier texte (dossier Téléchargements)',
+    onclick: () => {
+      const blob = new Blob([(state.inputEvents ?? []).map((i) => i.name).join('\n')], { type: 'text/plain' });
+      const link = h('a', { href: URL.createObjectURL(blob), download: `input-events-${state.status?.msfs?.aircraft ?? 'avion'}.txt` });
+      link.click();
+      toast('Liste enregistrée dans le dossier Téléchargements', 'ok');
+    },
+  }, icon('download'), 'Exporter la liste');
+
   const render = () => {
+    exportBtn.disabled = !state.inputEvents?.length;
     const q = search.value.trim().toLowerCase();
     const items = (state.inputEvents ?? []).filter((i) => !q || i.name.toLowerCase().includes(q));
     info.textContent = state.inputEvents
@@ -1368,17 +1381,8 @@ function openExplorer(onPick = null) {
       h('div', { class: 'row' }, varName, varUnit, h('button', { class: 'btn', style: { flex: 'none' }, onclick: readVar }, 'Lire')),
       varOut),
     h('div', { class: 'modal-actions' },
-      state.inputEvents?.length
-        ? h('button', {
-            class: 'btn ghost',
-            onclick: () => {
-              const blob = new Blob([state.inputEvents.map((i) => i.name).join('\n')], { type: 'text/plain' });
-              const link = h('a', { href: URL.createObjectURL(blob), download: `input-events-${state.status?.msfs?.aircraft ?? 'avion'}.txt` });
-              link.click();
-            },
-          }, icon('download'), 'Exporter la liste')
-        : null,
-      h('button', { class: 'btn', onclick: close }, 'Fermer')),
+      exportBtn,
+      h('button', { class: 'btn primary', onclick: close }, 'Fermer')),
   );
   const backdrop = h('div', { class: 'modal-backdrop explorer-backdrop', onmousedown: (e) => e.target === backdrop && close() }, modal);
   document.body.append(backdrop);

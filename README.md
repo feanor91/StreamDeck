@@ -244,6 +244,24 @@ FlyByWire, sans module supplémentaire :
 - pas d'altitude 100 / 1000, HDG-V/S / TRK-FPA, SPD / MACH ;
 - **auto-freinage LO / MED / MAX** (la touche du mode armé s'allume).
 
+#### Rafale (AzurPoly, MSFS 2024)
+
+Catégorie *Rafale (AzurPoly)*, construite à partir des Input Events exposés par
+l'avion (liste exportée depuis l'explorateur). Chaque touche lit l'état réel dans
+le simulateur :
+
+- **train d'atterrissage**, **frein de parc**, **aérofreins** ;
+- au sol : **échelle pilote**, **groupe de parc (GPU)** et **prise GPU**, **cales**,
+  **caches et protections** (tous en un appui : entrées d'air, pitot, AOA,
+  antennes…).
+
+Le Rafale n'expose pas ses systèmes de cockpit (armement, écrans, pilote
+automatique…) sous forme d'Input Events : ils passent par ses variables `L:`.
+Pour les trouver, activez le mode développeur de MSFS 2024, puis *Tools →
+Behaviors* → onglet *LocalVariables* ; une variable se teste avec « Lire une
+variable » de l'explorateur, puis s'utilise dans une touche (commande MSFS →
+*Variable*, ou bascule synchronisée).
+
 > Certains avions très détaillés ont leurs propres systèmes et ignorent une partie
 > des commandes standard : utilisez alors leurs commandes personnalisées, leurs
 > variables `L:` ou leurs Input Events (voir l'explorateur), ou à défaut des

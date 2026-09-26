@@ -1,7 +1,7 @@
 import { formatHotkey, MEDIA_ACTIONS } from '/shared/keys.js';
 import { h } from './dom.js';
 import { faceFor } from '/shared/layout.js';
-import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS, FBW_PRESETS } from '/shared/msfs.js';
+import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS, FBW_PRESETS, RAFALE_PRESETS } from '/shared/msfs.js';
 import { formatDisplay } from '/shared/controls.js';
 import { SIMHUB_PRESETS } from '/shared/simhub.js';
 
@@ -201,7 +201,7 @@ export const ACTION_TYPES = {
   },
 };
 
-export const STEP_TYPES = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'delay'];
+export const STEP_TYPES = ['hotkey', 'text', 'media', 'launch', 'url', 'command', 'msfs', 'simhub', 'delay'];
 export const DELAY_TYPE = { label: 'Pause', long: 'Pause', icon: '⏱️', create: () => ({ type: 'delay', ms: 300 }) };
 
 // Éléments de la bibliothèque (panneau de gauche). Certains sont des préréglages
@@ -247,6 +247,10 @@ export const LIBRARY = [
   {
     group: 'A320 FlyByWire',
     items: FBW_PRESETS,
+  },
+  {
+    group: 'Rafale (AzurPoly)',
+    items: RAFALE_PRESETS,
   },
   {
     group: 'SimHub',

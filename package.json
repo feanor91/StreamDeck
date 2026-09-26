@@ -1,7 +1,7 @@
 {
   "name": "streamsim",
   "productName": "StreamSim",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Clone logiciel de Stream Deck : serveur PC, application de configuration et client Android.",
   "author": "StreamSim",
   "license": "MIT",

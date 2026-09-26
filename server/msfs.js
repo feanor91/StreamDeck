@@ -171,9 +171,7 @@ export function createMsfs({
   }
 
   function aircraftName(path) {
-    const s = String(path || '');
-    const m = s.match(/([^\\/]+)[\\/][^\\/]*\.(?:air|cfg|flt)$/i);
-    return m ? m[1] : s || null;
+    return aircraftFromPath(path);
   }
 
   async function connect() {
@@ -404,4 +402,15 @@ export function createMsfs({
       handle = null;
     },
   };
+}
+
+// Nom de l'avion à partir du chemin de son fichier de configuration. Dans MSFS 2024, ce fichier
+// est rangé dans des sous-dossiers génériques (« …\rafale-c\config\aircraft.cfg ») : on les saute.
+const GENERIC_DIRS = new Set(['config', 'presets', 'common', 'model', 'models', 'texture', 'airplanes', 'simobjects', 'attachments']);
+export function aircraftFromPath(path) {
+  const s = String(path || '');
+  const parts = s.split(/[\\/]/).filter(Boolean);
+  if (parts.length < 2 || !/\.(?:air|cfg|flt)$/i.test(parts[parts.length - 1])) return s || null;
+  for (let i = parts.length - 2; i >= 0; i--) if (!GENERIC_DIRS.has(parts[i].toLowerCase())) return parts[i];
+  return parts[parts.length - 2];
 }

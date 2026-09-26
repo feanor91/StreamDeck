@@ -144,3 +144,29 @@ test('serveur : FCU A320 (voyants, afficheur, enfoncer / tirer) et bascule sur I
     await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test('Rafale : préréglages et nom de l’avion (MSFS 2024)', async () => {
+  const { RAFALE_PRESETS } = await import('../shared/msfs.js');
+  const { aircraftFromPath } = await import('../server/msfs.js');
+  for (const p of RAFALE_PRESETS) {
+    assert.ok(p.action.sync?.input, p.label);
+    const steps = p.action.actions.flatMap((a) => (a.type === 'multi' ? a.steps : [a]));
+    for (const st of steps) assert.ok(st.type === 'msfs' && st.kind === 'input' && /^[A-Z0-9_]+$/.test(st.input), `${p.label} : ${st.input}`);
+  }
+  assert.equal(aircraftFromPath('C:\\MSFS\\Community\\azurpoly\\SimObjects\\Airplanes\\Rafale\\presets\\azurpoly\\rafale-c\\config\\aircraft.cfg'), 'rafale-c');
+  assert.equal(aircraftFromPath('SimObjects\\Airplanes\\Faux_Rafale\\aircraft.cfg'), 'Faux_Rafale');
+});
+
+test('Rafale : caches posés puis retirés, état lu dans le simulateur', async () => {
+  const { RAFALE_PRESETS, RAFALE_COVERS } = await import('../shared/msfs.js');
+  const sim = fakeSimConnect({ inputs: RAFALE_COVERS.map((name) => ({ name, value: 0 })) });
+  const msfs = createMsfs({ log: quiet, load: async () => sim.lib });
+  msfs.start();
+  await tick();
+  const covers = RAFALE_PRESETS.find((p) => p.label.startsWith('Caches'));
+  await runAction({}, covers.action.actions[0], 0, { msfs });
+  assert.ok(RAFALE_COVERS.every((n) => sim.inputValues[n] === 1));
+  await runAction({}, covers.action.actions[1], 0, { msfs });
+  assert.ok(RAFALE_COVERS.every((n) => sim.inputValues[n] === 0));
+  msfs.close();
+});
