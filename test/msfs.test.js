@@ -91,9 +91,8 @@ test('catalogue MSFS cohérent', () => {
 test('serveur : bascule synchronisée avec une variable MSFS', async () => {
   const sim = fakeSimConnect();
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-msfs-'));
-  const port = 3900 + Math.floor(Math.random() * 400);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   const json = (p, body) =>
     fetch(url + p, body ? { method: body.method ?? 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body.data) } : {}).then((r) => r.json());
   try {
@@ -136,9 +135,8 @@ test('serveur : bouton rotatif et curseur MSFS', async () => {
     return sim.calls.filter((c) => c[0] === 'send').map((c) => [names.get(c[1]), c[2]]);
   };
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-ctl-'));
-  const port = 4300 + Math.floor(Math.random() * 400);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfsLoader: async () => sim.lib, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   const get = () => fetch(`${url}/api/config`).then((r) => r.json());
   const post = (data) =>
     fetch(`${url}/api/press`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then((r) => r.json());

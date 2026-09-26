@@ -39,7 +39,6 @@ test('recherche de mise à jour : disponible, à jour, erreur', async () => {
 
 test('serveur : état de mise à jour exposé et installation déléguée à l’application PC', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-update-'));
-  const port = 5100 + Math.floor(Math.random() * 300);
   let installed = 0;
   let listener = null;
   const status = { current: VERSION, state: 'ready', latest: '9.9.9', canInstall: true };
@@ -49,8 +48,8 @@ test('serveur : état de mise à jour exposé et installation déléguée à l�
     install: () => installed++,
     onChange: (fn) => ((listener = fn), () => (listener = null)),
   };
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, updater, log: quiet });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, updater, log: quiet });
+  const url = `http://127.0.0.1:${deck.port}`;
   try {
     assert.equal((await fetch(`${url}/api/status`).then((r) => r.json())).version, VERSION);
     const u = await fetch(`${url}/api/update`).then((r) => r.json());

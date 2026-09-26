@@ -60,9 +60,8 @@ test('une bascule ne peut pas en contenir une autre', async () => {
 
 test('serveur : appui sur une bascule, resynchronisation, persistance', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-toggle-'));
-  const port = 3400 + Math.floor(Math.random() * 500);
-  const deck = await startDeckServer({ port, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, log: { log() {}, warn() {}, error() {} } });
-  const url = `http://127.0.0.1:${port}`;
+  const deck = await startDeckServer({ port: 0, host: '127.0.0.1', dataDir, dryRun: true, discovery: false, msfs: false, log: { log() {}, warn() {}, error() {} } });
+  const url = `http://127.0.0.1:${deck.port}`;
   const post = (p, body) =>
     fetch(url + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
   try {
