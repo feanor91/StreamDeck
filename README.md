@@ -255,6 +255,15 @@ le simulateur :
   **caches et protections** (tous en un appui : entrées d'air, pitot, AOA,
   antennes…).
 
+Catégorie *Rafale : cockpit (à vérifier)*, construite à partir des variables `L:`
+relevées dans l'avion (fenêtre *Behaviors* de MSFS 2024) : batterie, sécurité
+armement, laser, altimètre STD, dégivrage, désembuage, prélèvement d'air moteur,
+coupure de la direction de roue avant, crosse de secours, tablette EFB ; boutons de
+page des écrans **VTLG / VTLD** (gauche, droite, haut, bas) ; molettes d'éclairage
+et de luminosité des écrans (± 5 %, valeur affichée). AzurPoly ne documente pas
+l'écriture de ces variables : si une touche n'a pas d'effet dans le cockpit, c'est
+que l'avion ne fait que lire cette variable pour son affichage.
+
 Le Rafale n'expose pas ses systèmes de cockpit (armement, écrans, pilote
 automatique…) sous forme d'Input Events : ils passent par ses variables `L:`.
 Pour les trouver, activez le mode développeur de MSFS 2024, puis *Tools →

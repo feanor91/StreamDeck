@@ -1,7 +1,7 @@
 import { formatHotkey, MEDIA_ACTIONS } from '/shared/keys.js';
 import { h } from './dom.js';
 import { faceFor } from '/shared/layout.js';
-import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS, FBW_PRESETS, RAFALE_PRESETS } from '/shared/msfs.js';
+import { MSFS_PRESETS, MSFS_EVENT_LABELS, MSFS_DIAL_PRESETS, MSFS_SLIDER_PRESETS, FBW_PRESETS, RAFALE_PRESETS, RAFALE_COCKPIT_PRESETS } from '/shared/msfs.js';
 import { formatDisplay } from '/shared/controls.js';
 import { SIMHUB_PRESETS } from '/shared/simhub.js';
 
@@ -251,6 +251,10 @@ export const LIBRARY = [
   {
     group: 'Rafale (AzurPoly)',
     items: RAFALE_PRESETS,
+  },
+  {
+    group: 'Rafale : cockpit (à vérifier)',
+    items: RAFALE_COCKPIT_PRESETS,
   },
   {
     group: 'SimHub',
