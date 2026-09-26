@@ -401,3 +401,108 @@ for (const p of FBW_PRESETS) {
     p.alt = { ...p.alt, title: p.face.title };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Rafale (AzurPoly, MSFS 2024). Commandes exposées en Input Events par l'avion :
+// essentiellement le sol (train, frein de parc, aérofreins, échelle, GPU, cales,
+// caches). Les systèmes du cockpit passent par des variables L: propres à AzurPoly.
+// Chaque touche lit l'état réel dans le simulateur (bascule synchronisée).
+// ---------------------------------------------------------------------------
+const RAF = '#1c2433';
+const ON_RED = '#b91c1c';
+const ON_AMBER = '#b45309';
+const aviaIcon = (name) => `/public/icons/avia/${name}.svg`;
+const rafToggle = (label, input, title, onTitle, iconName, { onIcon, onColor = ON_GREEN } = {}) => ({
+  label,
+  desc: 'Rafale · état synchronisé',
+  action: { type: 'toggle', same: true, sync: { input }, actions: [{ type: 'msfs', kind: 'input', input, op: 'toggle' }] },
+  face: { title, icon: aviaIcon(iconName), color: RAF },
+  alt: { title: onTitle, icon: aviaIcon(onIcon ?? iconName), color: onColor },
+});
+
+export const RAFALE_COVERS = [
+  'UNKNOWN_CD_AOA_COVERS', 'UNKNOWN_CD_ENGINE_COVER_L', 'UNKNOWN_CD_ENGINE_COVER_R', 'UNKNOWN_CD_FRONT_ANTENNA_COVER',
+  'UNKNOWN_CD_OSF_COVER', 'UNKNOWN_CD_PITOT_COVER', 'UNKNOWN_CD_REAR_COVERS', 'UNKNOWN_CD_SPECTRA_COVERS',
+];
+const setAll = (inputs, value) => ({ type: 'multi', steps: inputs.map((input) => ({ type: 'msfs', kind: 'input', input, op: 'set', value })) });
+
+export const RAFALE_PRESETS = [
+  rafToggle('Train d’atterrissage', 'LANDING_GEAR_GEAR', 'Train rentré', 'Train sorti', 'gear-up', { onIcon: 'gear-down' }),
+  rafToggle('Frein de parc', 'LANDING_GEAR_PARKINGBRAKE', 'Frein parc', 'FREIN PARC', 'parking-brake', { onColor: ON_RED }),
+  rafToggle('Aérofreins', 'AZP_RAF_HANDLING_SPOILERS', 'Aérofreins', 'AÉROFREINS', 'spoilers', { onColor: ON_AMBER }),
+  rafToggle('Échelle pilote', 'LADDER_PILOT_LADDER', 'Échelle', 'ÉCHELLE', 'door', { onColor: ON_AMBER }),
+  rafToggle('Groupe de parc (GPU)', 'CD_GPU_CD_GPU', 'GPU', 'GPU', 'battery'),
+  rafToggle('Prise GPU', 'GPU_PLUG_GPU_PLUG', 'Prise GPU', 'GPU BRANCHÉ', 'battery'),
+  rafToggle('Cales', 'UNKNOWN_CHOCKS', 'Cales', 'CALES', 'pushback', { onColor: ON_AMBER }),
+  {
+    label: 'Caches et protections (tous)',
+    desc: 'Rafale · état synchronisé',
+    action: { type: 'toggle', same: false, sync: { input: 'UNKNOWN_CD_PITOT_COVER' }, actions: [setAll(RAFALE_COVERS, 1), setAll(RAFALE_COVERS, 0)] },
+    face: { title: 'Caches', icon: aviaIcon('pitot-heat'), color: RAF },
+    alt: { title: 'CACHES POSÉS', icon: aviaIcon('pitot-heat'), color: ON_AMBER },
+  },
+];
+
+// Rafale : systèmes du cockpit, par ses variables L: (relevées dans la fenêtre « Behaviors »
+// de MSFS 2024). L'écriture directe de ces variables n'est pas documentée par AzurPoly :
+// ces préréglages sont à vérifier dans le simulateur.
+const lvar = (name) => `L:${name}`;
+const setVar = (name, value) => ({ type: 'msfs', kind: 'var', var: lvar(name), unit: 'number', op: 'set', value });
+const rafVar = (label, name, title, onTitle, iconName, { onColor = ON_GREEN } = {}) => ({
+  label,
+  desc: 'Rafale · variable L: (à vérifier)',
+  action: {
+    type: 'toggle',
+    same: true,
+    sync: { simvar: lvar(name), unit: 'number' },
+    actions: [{ type: 'msfs', kind: 'var', var: lvar(name), unit: 'number', op: 'toggle' }],
+  },
+  face: { title, icon: iconName ? aviaIcon(iconName) : null, color: RAF },
+  alt: { title: onTitle, icon: iconName ? aviaIcon(iconName) : null, color: onColor },
+});
+// Bouton poussoir (ex. sélecteurs de page des écrans) : 1 pendant un instant, puis 0.
+const rafPush = (label, name, title) => ({
+  label,
+  desc: 'Rafale · bouton poussoir (à vérifier)',
+  action: { type: 'multi', steps: [setVar(name, 1), { type: 'delay', ms: 150 }, setVar(name, 0)] },
+  face: { title, icon: null, color: '#161b24' },
+});
+// Molette 0 à 100 % (luminosité) : tourner = ± 5 %, valeur affichée sur la touche.
+const rafDial = (label, name, title) => ({
+  label,
+  desc: 'Rafale · bouton rotatif (à vérifier)',
+  action: {
+    type: 'dial',
+    sensitivity: 'normal',
+    inc: { type: 'msfs', kind: 'var', var: lvar(name), unit: 'number', op: 'add', value: 5, min: 0, max: 100 },
+    dec: { type: 'msfs', kind: 'var', var: lvar(name), unit: 'number', op: 'add', value: -5, min: 0, max: 100 },
+    press: null,
+    display: { simvar: lvar(name), unit: 'number', decimals: 0, suffix: ' %' },
+  },
+  face: { title, icon: null, color: '#161b24' },
+});
+
+export const RAFALE_COCKPIT_PRESETS = [
+  rafVar('Batterie', 'AZP_RAF_ELECTRICAL_BATTERY_MASTER_SWITCH_STATE', 'Batterie', 'BATTERIE', 'battery'),
+  rafVar('Sécurité armement', 'AZP_RAF_WEAPONS_SAFETY_SWITCH', 'Sécu arme', 'ARME', null, { onColor: ON_RED }),
+  rafVar('Laser', 'AZP_RAF_MISC_LASER_SWITCH', 'Laser', 'LASER', null, { onColor: ON_RED }),
+  rafVar('Altimètre STD', 'AZP_RAF_ALTIMETER_IS_STD', 'QNH', 'STD', 'altimeter', { onColor: '#0369a1' }),
+  rafVar('Dégivrage', 'AZP_RAF_ELECTRICAL_DEICE_SWITCH', 'Dégivrage', 'DÉGIVRAGE', 'pitot-heat'),
+  rafVar('Désembuage', 'AZP_RAF_PNEUMATICS_DEFOG_SWITCH', 'Désembuage', 'DÉSEMBUAGE', null),
+  rafVar('Prélèvement d’air moteur', 'AZP_RAF_PNEUMATICS_ENGINE_BLEED_AIR_SWITCH', 'Prélèv. air', 'PRÉLÈV. AIR', null),
+  rafVar('Direction roue avant (coupure)', 'AZP_RAF_HYDRAULIC_NOSEWHEEL_STEERING_OFF', 'Dir. roue AV', 'DIR. COUPÉE', null, { onColor: ON_AMBER }),
+  rafVar('Crosse (secours)', 'AZP_RAF_HYDRAULIC_TAILHOOK_EMERGENCY_SWITCH', 'Crosse', 'CROSSE', null, { onColor: ON_AMBER }),
+  rafVar('Tablette EFB', 'AZP_RAF_EFB_ON', 'EFB', 'EFB', null),
+  rafPush('VTLG : page gauche', 'AZP_RAF_VTLG_PAGE_SWITCH_L', 'VTLG ◀'),
+  rafPush('VTLG : page droite', 'AZP_RAF_VTLG_PAGE_SWITCH_R', 'VTLG ▶'),
+  rafPush('VTLG : haut', 'AZP_RAF_VTLG_PAGE_SWITCH_UP', 'VTLG ▲'),
+  rafPush('VTLG : bas', 'AZP_RAF_VTLG_PAGE_SWITCH_DN', 'VTLG ▼'),
+  rafPush('VTLD : page gauche', 'AZP_RAF_VTLD_PAGE_SWITCH_L', 'VTLD ◀'),
+  rafPush('VTLD : page droite', 'AZP_RAF_VTLD_PAGE_SWITCH_R', 'VTLD ▶'),
+  rafPush('VTLD : haut', 'AZP_RAF_VTLD_PAGE_SWITCH_UP', 'VTLD ▲'),
+  rafPush('VTLD : bas', 'AZP_RAF_VTLD_PAGE_SWITCH_DN', 'VTLD ▼'),
+  rafDial('Éclairage des panneaux', 'AZP_RAF_LIGHTING_PANEL_BACKLIGHT_INTENSITY', 'Panneaux'),
+  rafDial('Éclairage des voyants', 'AZP_RAF_LIGHTING_INTERIOR_INDICATORS_INTENSITY', 'Voyants'),
+  rafDial('Luminosité VTLG', 'AZP_RAF_AVIONICS_BRIGHTNESS_VTLG', 'Lum. VTLG'),
+  rafDial('Luminosité VTLD', 'AZP_RAF_AVIONICS_BRIGHTNESS_VTLD', 'Lum. VTLD'),
+];

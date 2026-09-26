@@ -144,3 +144,52 @@ test('serveur : FCU A320 (voyants, afficheur, enfoncer / tirer) et bascule sur I
     await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test('Rafale : préréglages et nom de l’avion (MSFS 2024)', async () => {
+  const { RAFALE_PRESETS } = await import('../shared/msfs.js');
+  const { aircraftFromPath } = await import('../server/msfs.js');
+  for (const p of RAFALE_PRESETS) {
+    assert.ok(p.action.sync?.input, p.label);
+    const steps = p.action.actions.flatMap((a) => (a.type === 'multi' ? a.steps : [a]));
+    for (const st of steps) assert.ok(st.type === 'msfs' && st.kind === 'input' && /^[A-Z0-9_]+$/.test(st.input), `${p.label} : ${st.input}`);
+  }
+  const { RAFALE_COCKPIT_PRESETS } = await import('../shared/msfs.js');
+  for (const p of RAFALE_COCKPIT_PRESETS) {
+    const a = p.action;
+    const vars = [a.sync?.simvar, a.display?.simvar, ...(a.steps ?? []).map((s) => s.var), ...(a.actions ?? []).map((s) => s.var), a.inc?.var, a.dec?.var].filter(Boolean);
+    assert.ok(vars.length, p.label);
+    for (const v of vars) assert.ok(isValidSimvar(v) && v.startsWith('L:AZP_RAF_'), `${p.label} : ${v}`);
+  }
+  assert.equal(aircraftFromPath('C:\\MSFS\\Community\\azurpoly\\SimObjects\\Airplanes\\Rafale\\presets\\azurpoly\\rafale-c\\config\\aircraft.cfg'), 'rafale-c');
+  assert.equal(aircraftFromPath('SimObjects\\Airplanes\\Faux_Rafale\\aircraft.cfg'), 'Faux_Rafale');
+});
+
+test('Rafale : caches posés puis retirés, état lu dans le simulateur', async () => {
+  const { RAFALE_PRESETS, RAFALE_COVERS } = await import('../shared/msfs.js');
+  const sim = fakeSimConnect({ inputs: RAFALE_COVERS.map((name) => ({ name, value: 0 })) });
+  const msfs = createMsfs({ log: quiet, load: async () => sim.lib });
+  msfs.start();
+  await tick();
+  const covers = RAFALE_PRESETS.find((p) => p.label.startsWith('Caches'));
+  await runAction({}, covers.action.actions[0], 0, { msfs });
+  assert.ok(RAFALE_COVERS.every((n) => sim.inputValues[n] === 1));
+  await runAction({}, covers.action.actions[1], 0, { msfs });
+  assert.ok(RAFALE_COVERS.every((n) => sim.inputValues[n] === 0));
+  msfs.close();
+});
+
+test('Rafale : bouton poussoir (1 puis 0) et molette de luminosité bornée', async () => {
+  const { RAFALE_COCKPIT_PRESETS } = await import('../shared/msfs.js');
+  const sim = fakeSimConnect({ vars: { 'L:AZP_RAF_VTLG_PAGE_SWITCH_R': 0, 'L:AZP_RAF_AVIONICS_BRIGHTNESS_VTLG': 90 } });
+  const msfs = createMsfs({ log: quiet, load: async () => sim.lib });
+  msfs.start();
+  await tick();
+  const push = RAFALE_COCKPIT_PRESETS.find((p) => p.label === 'VTLG : page droite');
+  await runAction({}, push.action, 0, { msfs });
+  const writes = sim.calls.filter((c) => c[0] === 'set' && c[1] === 'L:AZP_RAF_VTLG_PAGE_SWITCH_R').map((c) => c[2]);
+  assert.deepEqual(writes, [1, 0]);
+  const dial = RAFALE_COCKPIT_PRESETS.find((p) => p.label === 'Luminosité VTLG');
+  for (let i = 0; i < 4; i++) await runAction({}, dial.action.inc, 0, { msfs });
+  assert.equal(sim.values['L:AZP_RAF_AVIONICS_BRIGHTNESS_VTLG'], 100);
+  msfs.close();
+});
